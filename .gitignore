@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Fly.io
+.fly/
+
+# Generated
+*.pdf
+*.tar.gz
+*.zip
+demo/bulk/ezjems_bulk_import.xlsx
+demo/bulk/agl_responses/
+demo/out_ezjems_import.xlsx
+demo/agl_responses/
+demo/sample_intake.xlsx

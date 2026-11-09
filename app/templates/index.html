@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gemstone Intake · EZ JEMS Bulk Import Generator</title>
+  <style>
+    :root {
+      --bg:          #ffffff;
+      --surface:     #f6f8fa;
+      --surface-2:   #ecf0f3;
+      --border:      #d0d7de;
+      --text:        #1f2328;
+      --text-muted:  #656d76;
+      --accent:      #0969da;
+      --accent-dim:  #ddf4ff;
+      --ok:          #1a7f37;
+      --ok-bg:       #dafbe1;
+      --amber:       #9a6700;
+      --amber-bg:    #fff8c5;
+      --red:         #cf222e;
+      --red-bg:      #ffebe9;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ---- Title bar (VS Code-ish) ---- */
+    .titlebar {
+      height: 38px;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      user-select: none;
+    }
+    .titlebar .dot { width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+    .titlebar .dot.r { background: #ff5f57; }
+    .titlebar .dot.y { background: #febc2e; }
+    .titlebar .dot.g { background: #28c940; }
+    .titlebar .title { margin-left: 12px; }
+
+    /* ---- Tab bar ---- */
+    .tabs {
+      display: flex;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+    .tab {
+      padding: 9px 16px;
+      border-right: 1px solid var(--border);
+      color: var(--text-muted);
+      cursor: default;
+    }
+    .tab.active {
+      background: var(--bg);
+      color: var(--text);
+      border-bottom: 2px solid var(--accent);
+      margin-bottom: -1px;
+    }
+
+    /* ---- Layout ---- */
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 24px 22px 60px;
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 600;
+      margin: 0 0 4px;
+    }
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 13px;
+      margin: 0 0 24px;
+    }
+    section { margin-bottom: 22px; }
+    .section-title {
+      font-family: var(--mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    /* ---- Upload card ---- */
+    .uploads { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .drop {
+      border: 1.5px dashed var(--border);
+      border-radius: 6px;
+      padding: 18px;
+      background: var(--surface);
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .drop.filled {
+      border-style: solid;
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .drop-label {
+      font-weight: 600;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .drop-hint {
+      color: var(--text-muted);
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+    .drop input[type=file] {
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+    .filename {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--accent);
+      margin-top: 6px;
+      word-break: break-all;
+    }
+
+    /* ---- API key field ---- */
+    .auth-row {
+      display: {{ 'flex' if auth_required else 'none' }};
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .auth-row label {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .auth-row input {
+      flex: 1;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    /* ---- Buttons ---- */
+    .actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    button {
+      font-family: var(--sans);
+      font-size: 13px;
+      padding: 8px 16px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 6px;
+      cursor: pointer;
+      color: var(--text);
+    }
+    button:hover:not(:disabled) { background: var(--surface-2); }
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    button.primary:hover:not(:disabled) { background: #0860ca; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .busy {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---- Results panel ---- */
+    .results { display: none; margin-top: 28px; }
+    .results.shown { display: block; }
+
+    .stats {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .stat {
+      flex: 1;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+    .stat-num {
+      display: block;
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .stat.ok    { background: var(--ok-bg);    color: var(--ok); }
+    .stat.amber { background: var(--amber-bg); color: var(--amber); }
+    .stat.red   { background: var(--red-bg);   color: var(--red); }
+
+    .row-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--mono);
+      font-size: 12px;
+      margin-top: 8px;
+    }
+    .row-table th {
+      text-align: left;
+      padding: 8px 10px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+    }
+    .row-table td {
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--surface-2);
+      vertical-align: top;
+    }
+    .pill {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .pill.ok    { background: var(--ok-bg);    color: var(--ok); }
+    .pill.amber { background: var(--amber-bg); color: var(--amber); }
+    .pill.red   { background: var(--red-bg);   color: var(--red); }
+
+    .error-box {
+      padding: 12px 14px;
+      border: 1px solid var(--red);
+      background: var(--red-bg);
+      color: var(--red);
+      border-radius: 6px;
+      font-family: var(--mono);
+      font-size: 12px;
+      margin-top: 12px;
+      display: none;
+    }
+    .error-box.shown { display: block; }
+
+    footer {
+      margin-top: 40px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    @media (max-width: 720px) {
+      .uploads { grid-template-columns: 1fr; }
+      .stats   { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="titlebar">
+  <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+  <span class="title">gemstone-intake · EZ JEMS Bulk Import Generator</span>
+</div>
+
+<div class="tabs">
+  <div class="tab active">intake.py</div>
+  <div class="tab">README.md</div>
+  <div class="tab">tests/</div>
+</div>
+
+<div class="wrap">
+  <h1>Build an EZ JEMS bulk import file</h1>
+  <p class="subtitle">
+    Upload the manager's intake Excel + the AGL responses zip from the AGL
+    Report Fetcher. Get back an EZ JEMS-shaped bulk import file plus a
+    row-level status report.
+  </p>
+
+  <div class="auth-row" id="authRow">
+    <label for="apiKey">X-API-Key</label>
+    <input id="apiKey" type="password" autocomplete="off" placeholder="paste INTAKE_API_KEY here" />
+  </div>
+
+  <section>
+    <div class="section-title">1 · Inputs</div>
+    <div class="uploads">
+      <div class="drop" id="dropIntake">
+        <div class="drop-label">Intake Excel</div>
+        <div class="drop-hint">Columns: Report&nbsp;No · Password · Unit&nbsp;Price · FWD&nbsp;LOC · FWD&nbsp;SSP · Lot&nbsp;No (optional)</div>
+        <input type="file" id="intakeFile" accept=".xlsx" />
+        <div class="filename" id="intakeName"></div>
+      </div>
+      <div class="drop" id="dropResponses">
+        <div class="drop-label">AGL responses (.zip)</div>
+        <div class="drop-hint">One <code>&lt;ReportNo&gt;.html</code> or <code>&lt;ReportNo&gt;.json</code> per row</div>
+        <input type="file" id="responsesFile" accept=".zip" />
+        <div class="filename" id="responsesName"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-title">2 · Run</div>
+    <div class="actions">
+      <button class="primary" id="goBtn" disabled>Generate import file</button>
+      <span class="busy" id="busy" style="display:none"><span class="spinner"></span>Processing…</span>
+    </div>
+    <div class="error-box" id="errorBox"></div>
+  </section>
+
+  <section class="results" id="results">
+    <div class="section-title">3 · Output</div>
+    <div class="stats">
+      <div class="stat ok">    <span class="stat-num" id="statOk">0</span>ok rows</div>
+      <div class="stat amber"> <span class="stat-num" id="statAmber">0</span>amber rows</div>
+      <div class="stat red">   <span class="stat-num" id="statRed">0</span>red rows (skipped)</div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="downloadBtn">⬇ Download EZ JEMS import</button>
+    </div>
+    <div class="section-title" style="margin-top:20px">Row status</div>
+    <table class="row-table">
+      <thead><tr><th>Report No</th><th>Status</th><th>Warnings</th></tr></thead>
+      <tbody id="rowTable"></tbody>
+    </table>
+  </section>
+
+  <footer>
+    gemstone-intake · companion to AGL Report Fetcher · BULK PI GENERATOR
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+const intakeInput = $("intakeFile");
+const responsesInput = $("responsesFile");
+const goBtn = $("goBtn");
+const busy = $("busy");
+const errorBox = $("errorBox");
+const results = $("results");
+const downloadBtn = $("downloadBtn");
+const apiKeyInput = $("apiKey");
+
+let lastFileB64 = null;
+let lastFileName = "ezjems_bulk_import.xlsx";
+
+// Persist API key in localStorage so the manager isn't retyping it
+if (apiKeyInput) {
+  const saved = localStorage.getItem("intake_api_key");
+  if (saved) apiKeyInput.value = saved;
+  apiKeyInput.addEventListener("input", () => {
+    localStorage.setItem("intake_api_key", apiKeyInput.value);
+  });
+}
+
+function updateGoButton() {
+  goBtn.disabled = !(intakeInput.files[0] && responsesInput.files[0]);
+}
+
+function bindFileInput(input, nameEl, dropEl) {
+  input.addEventListener("change", () => {
+    const f = input.files[0];
+    if (f) {
+      nameEl.textContent = f.name + " · " + (f.size / 1024).toFixed(1) + " KB";
+      dropEl.classList.add("filled");
+    } else {
+      nameEl.textContent = "";
+      dropEl.classList.remove("filled");
+    }
+    updateGoButton();
+  });
+}
+
+bindFileInput(intakeInput, $("intakeName"), $("dropIntake"));
+bindFileInput(responsesInput, $("responsesName"), $("dropResponses"));
+
+function showError(msg) {
+  errorBox.textContent = "Error: " + msg;
+  errorBox.classList.add("shown");
+}
+function clearError() {
+  errorBox.classList.remove("shown");
+  errorBox.textContent = "";
+}
+
+goBtn.addEventListener("click", async () => {
+  clearError();
+  results.classList.remove("shown");
+  goBtn.disabled = true;
+  busy.style.display = "inline-flex";
+
+  const fd = new FormData();
+  fd.append("intake", intakeInput.files[0]);
+  fd.append("responses", responsesInput.files[0]);
+  if (apiKeyInput && apiKeyInput.value) {
+    fd.append("api_key", apiKeyInput.value);
+  }
+
+  try {
+    const headers = {};
+    if (apiKeyInput && apiKeyInput.value) {
+      headers["X-API-Key"] = apiKeyInput.value;
+    }
+    const resp = await fetch("/run", { method: "POST", body: fd, headers });
+    const data = await resp.json().catch(() => ({ error: "non-JSON response" }));
+    if (!resp.ok) {
+      showError(data.error || ("HTTP " + resp.status));
+      return;
+    }
+
+    // Render results
+    $("statOk").textContent    = data.rows_written - data.rows_amber;
+    $("statAmber").textContent = data.rows_amber;
+    $("statRed").textContent   = data.rows_red;
+
+    const tbody = $("rowTable");
+    tbody.innerHTML = "";
+    for (const r of data.per_row) {
+      const tr = document.createElement("tr");
+      const cls = r.status === "ok" ? "ok" : (r.status === "red" || r.status === "failed") ? "red" : "amber";
+      tr.innerHTML = `
+        <td>${r.report_no || "—"}</td>
+        <td><span class="pill ${cls}">${r.status}</span></td>
+        <td>${(r.warnings || []).join("; ")}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    lastFileB64 = data.file_b64;
+    lastFileName = data.file_name || "ezjems_bulk_import.xlsx";
+    results.classList.add("shown");
+
+  } catch (e) {
+    showError(e.message || String(e));
+  } finally {
+    busy.style.display = "none";
+    goBtn.disabled = false;
+  }
+});
+
+downloadBtn.addEventListener("click", () => {
+  if (!lastFileB64) return;
+  const bin = atob(lastFileB64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const blob = new Blob([bytes], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = lastFileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.git/
+.gitignore
+.venv/
+venv/
+env/
+tests/
+demo/
+*.md
+*.pdf
+*.tar.gz
+Gemstone_Purchase_*.pdf
+sample_output.json
+inspect_template*.py
