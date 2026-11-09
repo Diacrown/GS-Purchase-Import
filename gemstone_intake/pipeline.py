@@ -13,10 +13,12 @@ AGL responses folder:
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
+import requests
 from openpyxl import Workbook, load_workbook
 
 from .constants import (
@@ -193,13 +195,18 @@ def run_pipeline(
     out_path: Path,
     constants: Optional[ConstantsProfile] = None,
 ) -> PipelineResult:
+    """
+    File-based pipeline (kept for offline tests / backward compatibility).
+
+    Each intake row's Report No must match an AGL response file at
+    `<agl_dir>/<ReportNo>.html` or `.json`.
+    """
     intake_rows = read_intake(intake_path)
     pairs: list[tuple[dict, MappingResult]] = []
 
     for intake in intake_rows:
         report = _load_agl_response(agl_dir, str(intake["Report No"]))
         if report is None:
-            # Treat as hard failure — row red, written to the per-row log
             mr = MappingResult(
                 status="failed",
                 row={},
@@ -217,5 +224,95 @@ def run_pipeline(
             constants=constants,
         )
         pairs.append((intake, mr))
+
+    return write_output(pairs, out_path)
+
+
+ProgressFn = Callable[[int, int, str], None]
+
+
+def run_pipeline_live(
+    intake_path: Path,
+    out_path: Path,
+    constants: Optional[ConstantsProfile] = None,
+    delay_seconds: float = 2.0,
+    progress: Optional[ProgressFn] = None,
+) -> PipelineResult:
+    """
+    Live pipeline — one upload in, one file out.
+
+    For each row of the intake Excel:
+      1. Fetch the cert image from aglthai.com (needs network egress to that host).
+      2. Send the image to Google Gemini for structured field extraction
+         (needs GEMINI_API_KEY env var).
+      3. Map to EZ JEMS row, flag ok/amber/red.
+
+    Rate-limited to one AGL call every `delay_seconds` (default 2s, matches
+    Certificate-Scrapper's convention) to stay polite with aglthai.com.
+    """
+    from .fetch import fetch_report_image, mime_for_ext, parse_password
+    from .vision import extract_from_image
+
+    intake_rows = read_intake(intake_path)
+    pairs: list[tuple[dict, MappingResult]] = []
+    session = requests.Session()
+    total = len(intake_rows)
+
+    for i, intake in enumerate(intake_rows, start=1):
+        report_no_raw = intake.get("Report No")
+        password_raw = intake.get("Password")
+        report_no = str(report_no_raw).strip() if report_no_raw else ""
+        password = parse_password(password_raw) or (
+            str(password_raw).strip() if password_raw else ""
+        )
+
+        if progress:
+            progress(i, total, report_no or "<blank>")
+
+        if not report_no or not password:
+            pairs.append((intake, MappingResult(
+                status="failed", row={},
+                warnings=["missing Report No or Password in intake row"],
+            )))
+            continue
+
+        # --- 1. Fetch cert image -------------------------------------------
+        try:
+            img_bytes, ext = fetch_report_image(report_no, password, session=session)
+        except Exception as e:
+            pairs.append((intake, MappingResult(
+                status="failed", row={},
+                warnings=[f"AGL fetch failed: {type(e).__name__}: {e}"],
+            )))
+            # Still respect the delay before the next AGL call
+            if i < total and delay_seconds > 0:
+                time.sleep(delay_seconds)
+            continue
+
+        # --- 2. Extract fields with Gemini ---------------------------------
+        try:
+            report = extract_from_image(img_bytes, mime_type=mime_for_ext(ext))
+        except Exception as e:
+            pairs.append((intake, MappingResult(
+                status="failed", row={},
+                warnings=[f"vision extract failed: {type(e).__name__}: {e}"],
+            )))
+            if i < total and delay_seconds > 0:
+                time.sleep(delay_seconds)
+            continue
+
+        # --- 3. Map + flag --------------------------------------------------
+        mr = agl_to_erp_row(
+            report,
+            unit_price=intake.get("Unit Price"),
+            fwd_loc=intake.get("FWD LOC"),
+            fwd_ssp=intake.get("FWD SSP"),
+            lot_no=intake.get("Lot No"),
+            constants=constants,
+        )
+        pairs.append((intake, mr))
+
+        if i < total and delay_seconds > 0:
+            time.sleep(delay_seconds)
 
     return write_output(pairs, out_path)

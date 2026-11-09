@@ -32,11 +32,11 @@ Entry points
 from .extract import AGLReport, Dimensions, extract_from_html
 from .mapping import agl_to_erp_row, MappingResult
 from .item_code import build_gemstone_item_code
-from .pipeline import run_pipeline, PipelineResult
+from .pipeline import run_pipeline, run_pipeline_live, PipelineResult
 
 __all__ = [
     "AGLReport", "Dimensions", "extract_from_html",
     "agl_to_erp_row", "MappingResult",
     "build_gemstone_item_code",
-    "run_pipeline", "PipelineResult",
+    "run_pipeline", "run_pipeline_live", "PipelineResult",
 ]

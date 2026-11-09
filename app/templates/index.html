@@ -101,13 +101,52 @@
 
     /* ---- Upload card ---- */
     .uploads { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .uploads.single { grid-template-columns: 1fr; max-width: 560px; }
     .drop {
       border: 1.5px dashed var(--border);
       border-radius: 6px;
       padding: 18px;
       background: var(--surface);
       transition: border-color 0.15s, background 0.15s;
+      position: relative;
     }
+    .drop .tmpl-link {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--accent);
+      text-decoration: none;
+      padding: 2px 6px;
+      border: 1px solid var(--accent);
+      border-radius: 3px;
+    }
+    .drop .tmpl-link:hover { background: var(--accent-dim); }
+    .help-toggle {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      cursor: pointer;
+      text-decoration: underline;
+      margin-top: 8px;
+      display: inline-block;
+    }
+    .help-panel {
+      display: none;
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text);
+    }
+    .help-panel.open { display: block; }
+    .help-panel code { background: var(--surface-2); padding: 1px 4px; border-radius: 2px; }
+    .help-panel ol { margin: 6px 0 0 20px; padding: 0; }
+    .help-panel li { margin-bottom: 4px; }
     .drop.filled {
       border-style: solid;
       border-color: var(--accent);
@@ -304,9 +343,9 @@
 <div class="wrap">
   <h1>Build an EZ JEMS bulk import file</h1>
   <p class="subtitle">
-    Upload the manager's intake Excel + the AGL responses zip from the AGL
-    Report Fetcher. Get back an EZ JEMS-shaped bulk import file plus a
-    row-level status report.
+    Upload the manager's intake Excel. The server fetches each cert from
+    aglthai.com, reads the fields off the image with Google Gemini, and
+    hands back an EZ&nbsp;JEMS-shaped bulk import file plus a row-level status.
   </p>
 
   <div class="auth-row" id="authRow">
@@ -315,19 +354,26 @@
   </div>
 
   <section>
-    <div class="section-title">1 · Inputs</div>
-    <div class="uploads">
+    <div class="section-title">1 · Input</div>
+    <div class="uploads single">
       <div class="drop" id="dropIntake">
+        <a class="tmpl-link" href="/template/intake" download>⬇ template</a>
         <div class="drop-label">Intake Excel</div>
         <div class="drop-hint">Columns: Report&nbsp;No · Password · Unit&nbsp;Price · FWD&nbsp;LOC · FWD&nbsp;SSP · Lot&nbsp;No (optional)</div>
         <input type="file" id="intakeFile" accept=".xlsx" />
         <div class="filename" id="intakeName"></div>
-      </div>
-      <div class="drop" id="dropResponses">
-        <div class="drop-label">AGL responses (.zip)</div>
-        <div class="drop-hint">One <code>&lt;ReportNo&gt;.html</code> or <code>&lt;ReportNo&gt;.json</code> per row</div>
-        <input type="file" id="responsesFile" accept=".zip" />
-        <div class="filename" id="responsesName"></div>
+        <span class="help-toggle" onclick="document.getElementById('helpIntake').classList.toggle('open')">how it works</span>
+        <div class="help-panel" id="helpIntake">
+          Download the template with the ⬇&nbsp;link above, fill one row per stone, upload here, click Generate.
+          <ol>
+            <li>The server fetches each stone's cert image from <code>aglthai.com</code> using Report No + Password.</li>
+            <li>Google&nbsp;Gemini reads the fields off each cert image — Variety, Weight, Shape, Colour, Dimensions, Treatment, Origin.</li>
+            <li>Those get mapped to EZ&nbsp;JEMS values (ST, Shape code, Colour code), Item # generated via BULK&nbsp;PI logic, constants attached, output written in the 29-column GS_BULK_IMPORT format.</li>
+          </ol>
+          <code>Unit Price</code> is per carat; <code>FWD LOC</code> and <code>FWD SSP</code> vary per stone (fill both for every row).
+          <br><br>
+          Expect ~3 seconds per row (2s AGL rate limit + Gemini latency). 15 rows ≈ 45s.
+        </div>
       </div>
     </div>
   </section>
@@ -336,7 +382,7 @@
     <div class="section-title">2 · Run</div>
     <div class="actions">
       <button class="primary" id="goBtn" disabled>Generate import file</button>
-      <span class="busy" id="busy" style="display:none"><span class="spinner"></span>Processing…</span>
+      <span class="busy" id="busy" style="display:none"><span class="spinner"></span>Fetching certs &amp; reading fields… (~3s per row)</span>
     </div>
     <div class="error-box" id="errorBox"></div>
   </section>
@@ -367,7 +413,6 @@
 const $ = (id) => document.getElementById(id);
 
 const intakeInput = $("intakeFile");
-const responsesInput = $("responsesFile");
 const goBtn = $("goBtn");
 const busy = $("busy");
 const errorBox = $("errorBox");
@@ -388,7 +433,7 @@ if (apiKeyInput) {
 }
 
 function updateGoButton() {
-  goBtn.disabled = !(intakeInput.files[0] && responsesInput.files[0]);
+  goBtn.disabled = !intakeInput.files[0];
 }
 
 function bindFileInput(input, nameEl, dropEl) {
@@ -406,7 +451,6 @@ function bindFileInput(input, nameEl, dropEl) {
 }
 
 bindFileInput(intakeInput, $("intakeName"), $("dropIntake"));
-bindFileInput(responsesInput, $("responsesName"), $("dropResponses"));
 
 function showError(msg) {
   errorBox.textContent = "Error: " + msg;
@@ -425,7 +469,6 @@ goBtn.addEventListener("click", async () => {
 
   const fd = new FormData();
   fd.append("intake", intakeInput.files[0]);
-  fd.append("responses", responsesInput.files[0]);
   if (apiKeyInput && apiKeyInput.value) {
     fd.append("api_key", apiKeyInput.value);
   }

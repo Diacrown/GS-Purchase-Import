@@ -20,10 +20,14 @@ uploads, and a download button for the EZ JEMS import file.
 #    - "App name" → change from "gemstone-intake" if taken
 fly launch --no-deploy
 
-# 2. Set the API key so /run requires auth (STRONGLY recommended)
+# 2. Set the Gemini API key (REQUIRED — the live pipeline won't start without it)
+#    Get a key free at https://aistudio.google.com/apikey
+fly secrets set GEMINI_API_KEY="your-gemini-key"
+
+# 3. Set the API key so /run requires auth (STRONGLY recommended)
 fly secrets set INTAKE_API_KEY="$(openssl rand -hex 24)"
 
-# 3. Deploy
+# 4. Deploy
 fly deploy
 
 # 4. Open

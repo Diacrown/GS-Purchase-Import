@@ -1,15 +1,19 @@
 """
-Flask web app — host wrapper around the gemstone_intake pipeline.
+Flask web app — one upload in, one file out.
 
 Endpoints:
-    GET  /         upload UI
-    GET  /health   health check (always public)
-    POST /run      process intake + AGL responses → JSON {summary, per_row, file_b64}
+    GET  /                       upload UI
+    GET  /health                 health check (always public)
+    GET  /template/intake        download empty intake Excel (headers + 1 example row)
+    POST /run                    process intake → fetch certs from AGL → Gemini → import file
 
 Auth:
     If env var INTAKE_API_KEY is set, every /run request must include a
     matching `X-API-Key` header (or `api_key` form field). If unset, no auth
-    required (useful for dev / local). / and /health stay public either way.
+    required (dev / local).
+
+Required env vars for /run:
+    GEMINI_API_KEY   — Google Gemini API key (https://aistudio.google.com)
 """
 from __future__ import annotations
 
@@ -17,16 +21,16 @@ import base64
 import io
 import os
 import tempfile
-import zipfile
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_file
+from openpyxl import Workbook
 
-from gemstone_intake.pipeline import run_pipeline
+from gemstone_intake.pipeline import run_pipeline_live, INTAKE_COLUMNS
 
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB upper bound
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024  # 8 MB — intake Excels are tiny
 
 API_KEY = os.environ.get("INTAKE_API_KEY") or None
 
@@ -48,17 +52,43 @@ def health():
         "status": "ok",
         "service": "gemstone-intake",
         "auth_required": bool(API_KEY),
+        "gemini_configured": bool(os.environ.get("GEMINI_API_KEY")),
     })
 
 
 @app.route("/")
 def index():
-    return render_template("index.html", auth_required=bool(API_KEY))
+    return render_template(
+        "index.html",
+        auth_required=bool(API_KEY),
+        gemini_configured=bool(os.environ.get("GEMINI_API_KEY")),
+    )
 
 
 @app.errorhandler(413)
 def too_large(_err):
-    return jsonify({"error": "file too large; max combined upload is 32 MB"}), 413
+    return jsonify({"error": "file too large; intake Excel limit is 8 MB"}), 413
+
+
+@app.route("/template/intake")
+def template_intake():
+    """Download a ready-to-fill intake Excel: headers + one example row."""
+    buf = io.BytesIO()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Intake"
+    ws.append(INTAKE_COLUMNS)
+    ws.append(["AGL-100001", "see AGL cert", 300.00, "T", "DDX", ""])
+    for col, width in zip("ABCDEF", [14, 14, 12, 10, 10, 12]):
+        ws.column_dimensions[col].width = width
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name="gs_purchase_intake_template.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @app.route("/run", methods=["POST"])
@@ -66,38 +96,31 @@ def run():
     if not _authed():
         return jsonify({"error": "unauthorized (bad or missing X-API-Key)"}), 401
 
-    intake = request.files.get("intake")
-    responses = request.files.get("responses")
-    if not intake or not responses:
+    if not os.environ.get("GEMINI_API_KEY"):
         return jsonify({
-            "error": "both 'intake' (.xlsx) and 'responses' (.zip) files required",
+            "error": "server missing GEMINI_API_KEY — set the secret before use",
+        }), 500
+
+    intake = request.files.get("intake")
+    if not intake:
+        return jsonify({
+            "error": "'intake' (.xlsx) file is required",
         }), 400
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-
         intake_path = tmp_path / "intake.xlsx"
         intake.save(intake_path)
-
-        agl_dir = tmp_path / "agl"
-        agl_dir.mkdir()
-        try:
-            with zipfile.ZipFile(responses.stream) as zf:
-                for name in zf.namelist():
-                    if name.endswith("/"):
-                        continue
-                    basename = Path(name).name
-                    if not basename:
-                        continue
-                    with zf.open(name) as src, (agl_dir / basename).open("wb") as dst:
-                        dst.write(src.read())
-        except zipfile.BadZipFile:
-            return jsonify({"error": "'responses' is not a valid zip file"}), 400
 
         out_path = tmp_path / "ezjems_bulk_import.xlsx"
 
         try:
-            result = run_pipeline(intake_path, agl_dir, out_path)
+            delay = float(os.environ.get("AGL_LOOKUP_DELAY", "2.0"))
+            result = run_pipeline_live(
+                intake_path,
+                out_path,
+                delay_seconds=delay,
+            )
         except ValueError as e:
             # read_intake raises ValueError on missing required intake columns
             return jsonify({"error": str(e)}), 400
@@ -119,5 +142,5 @@ def run():
 
 
 if __name__ == "__main__":
-    # Local dev — do NOT use this in production; Fly.io uses gunicorn.
+    # Local dev — Fly.io uses gunicorn via the Dockerfile.
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)), debug=False)
