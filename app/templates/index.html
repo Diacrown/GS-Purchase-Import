@@ -3,533 +3,931 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gemstone Intake · EZ JEMS Bulk Import Generator</title>
+  <title>GS Purchase Intake · EZ JEMS Bulk Import Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg:          #ffffff;
       --surface:     #f6f8fa;
-      --surface-2:   #ecf0f3;
+      --surface-2:   #eaeef2;
+      --surface-3:   #d8dee4;
       --border:      #d0d7de;
+      --border-soft: #e4e8eb;
       --text:        #1f2328;
       --text-muted:  #656d76;
+      --text-subtle: #8c959f;
       --accent:      #0969da;
+      --accent-hover:#0860ca;
       --accent-dim:  #ddf4ff;
       --ok:          #1a7f37;
       --ok-bg:       #dafbe1;
+      --ok-border:   #4ac26b;
       --amber:       #9a6700;
       --amber-bg:    #fff8c5;
+      --amber-border:#d4a72c;
       --red:         #cf222e;
       --red-bg:      #ffebe9;
-      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --red-border:  #ff8182;
+      --purple:      #8250df;
+      --sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      --radius: 6px;
+      --radius-lg: 10px;
+      --shadow-sm: 0 1px 2px rgba(31,35,40,0.04);
+      --shadow:    0 3px 6px rgba(31,35,40,0.06), 0 1px 2px rgba(31,35,40,0.04);
+      --shadow-lg: 0 12px 28px rgba(31,35,40,0.08), 0 2px 4px rgba(31,35,40,0.04);
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
       background: var(--bg);
       color: var(--text);
       font-family: var(--sans);
       font-size: 14px;
-      line-height: 1.5;
+      line-height: 1.55;
+      font-feature-settings: "ss01", "cv11";
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
     }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code { font-family: var(--mono); font-size: 0.86em; background: var(--surface); padding: 1.5px 5px; border-radius: 3px; border: 1px solid var(--border-soft); }
 
-    /* ---- Title bar (VS Code-ish) ---- */
+    /* ================= Chrome (titlebar + tabs) ================= */
     .titlebar {
-      height: 38px;
+      height: 40px;
       background: var(--surface-2);
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
-      padding: 0 14px;
+      padding: 0 16px;
+      user-select: none;
+      flex-shrink: 0;
+    }
+    .traffic { display: flex; gap: 8px; margin-right: 16px; }
+    .traffic .dot { width: 11px; height: 11px; border-radius: 50%; }
+    .traffic .r { background: #ff5f57; }
+    .traffic .y { background: #febc2e; }
+    .traffic .g { background: #28c940; }
+    .titlebar .brand {
       font-family: var(--mono);
       font-size: 12px;
       color: var(--text-muted);
-      user-select: none;
+      font-weight: 500;
     }
-    .titlebar .dot { width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
-    .titlebar .dot.r { background: #ff5f57; }
-    .titlebar .dot.y { background: #febc2e; }
-    .titlebar .dot.g { background: #28c940; }
-    .titlebar .title { margin-left: 12px; }
+    .titlebar .brand .accent { color: var(--accent); font-weight: 600; }
+    .titlebar .right { margin-left: auto; display: flex; align-items: center; gap: 12px; font-family: var(--mono); font-size: 11px; color: var(--text-subtle); }
+    .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--ok); box-shadow: 0 0 0 2px var(--ok-bg); }
+    .status-dot.off { background: var(--red); box-shadow: 0 0 0 2px var(--red-bg); }
 
-    /* ---- Tab bar ---- */
     .tabs {
       display: flex;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      font-family: var(--mono);
-      font-size: 13px;
+      padding: 0 16px;
+      flex-shrink: 0;
+      overflow-x: auto;
     }
     .tab {
-      padding: 9px 16px;
-      border-right: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px 9px;
+      font-family: var(--mono);
+      font-size: 12.5px;
       color: var(--text-muted);
-      cursor: default;
+      cursor: pointer;
+      border-top: 2px solid transparent;
+      border-right: 1px solid var(--border-soft);
+      transition: all 0.12s ease;
+      white-space: nowrap;
     }
+    .tab:hover { background: rgba(0,0,0,0.02); color: var(--text); }
     .tab.active {
       background: var(--bg);
       color: var(--text);
-      border-bottom: 2px solid var(--accent);
-      margin-bottom: -1px;
+      border-top-color: var(--accent);
+      font-weight: 500;
     }
+    .tab-icon { width: 14px; height: 14px; flex-shrink: 0; }
+    .tab-icon.mod { color: var(--purple); }
 
-    /* ---- Layout ---- */
-    .wrap {
-      max-width: 980px;
-      margin: 0 auto;
-      padding: 24px 22px 60px;
+    /* ================= Main ================= */
+    .main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px 32px 80px;
     }
-    h1 {
-      font-size: 20px;
-      font-weight: 600;
-      margin: 0 0 4px;
-    }
-    .subtitle {
-      color: var(--text-muted);
-      font-size: 13px;
-      margin: 0 0 24px;
-    }
-    section { margin-bottom: 22px; }
-    .section-title {
-      font-family: var(--mono);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
-      margin-bottom: 8px;
-    }
+    .wrap { max-width: 900px; margin: 0 auto; }
+    .panel { display: none; }
+    .panel.active { display: block; }
 
-    /* ---- Upload card ---- */
-    .uploads { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .uploads.single { grid-template-columns: 1fr; max-width: 560px; }
-    .drop {
-      border: 1.5px dashed var(--border);
-      border-radius: 6px;
-      padding: 18px;
-      background: var(--surface);
-      transition: border-color 0.15s, background 0.15s;
-      position: relative;
-    }
-    .drop .tmpl-link {
-      position: absolute;
-      top: 14px;
-      right: 14px;
-      font-size: 11px;
-      font-family: var(--mono);
-      color: var(--accent);
-      text-decoration: none;
-      padding: 2px 6px;
-      border: 1px solid var(--accent);
-      border-radius: 3px;
-    }
-    .drop .tmpl-link:hover { background: var(--accent-dim); }
-    .help-toggle {
-      font-family: var(--mono);
-      font-size: 11px;
-      color: var(--text-muted);
-      cursor: pointer;
-      text-decoration: underline;
-      margin-top: 8px;
-      display: inline-block;
-    }
-    .help-panel {
-      display: none;
-      margin-top: 10px;
-      padding: 10px 12px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      font-size: 12px;
-      line-height: 1.5;
-      color: var(--text);
-    }
-    .help-panel.open { display: block; }
-    .help-panel code { background: var(--surface-2); padding: 1px 4px; border-radius: 2px; }
-    .help-panel ol { margin: 6px 0 0 20px; padding: 0; }
-    .help-panel li { margin-bottom: 4px; }
-    .drop.filled {
-      border-style: solid;
-      border-color: var(--accent);
-      background: var(--accent-dim);
-    }
-    .drop-label {
-      font-weight: 600;
-      font-size: 13px;
-      margin-bottom: 4px;
-    }
-    .drop-hint {
-      color: var(--text-muted);
-      font-size: 12px;
-      margin-bottom: 10px;
-    }
-    .drop input[type=file] {
-      font-family: var(--mono);
-      font-size: 12px;
-    }
-    .filename {
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--accent);
-      margin-top: 6px;
-      word-break: break-all;
-    }
+    h1 { font-size: 24px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.015em; }
+    h2 { font-size: 18px; font-weight: 600; margin: 32px 0 12px; letter-spacing: -0.01em; }
+    h3 { font-size: 14px; font-weight: 600; margin: 20px 0 8px; }
+    .subtitle { color: var(--text-muted); font-size: 14.5px; margin: 0 0 32px; max-width: 640px; }
+    .section-label { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-subtle); margin-bottom: 10px; font-weight: 600; }
 
-    /* ---- API key field ---- */
+    /* ================= Auth row ================= */
     .auth-row {
       display: {{ 'flex' if auth_required else 'none' }};
       align-items: center;
-      gap: 10px;
-      margin-bottom: 14px;
-      padding: 10px 12px;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding: 12px 16px;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 6px;
+      border-radius: var(--radius);
     }
     .auth-row label {
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--text-muted);
+      font-family: var(--mono); font-size: 11px; color: var(--text-muted); font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.06em;
     }
     .auth-row input {
       flex: 1;
-      padding: 6px 10px;
+      padding: 7px 11px;
       border: 1px solid var(--border);
       border-radius: 4px;
       font-family: var(--mono);
       font-size: 12px;
-    }
-
-    /* ---- Buttons ---- */
-    .actions {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-    }
-    button {
-      font-family: var(--sans);
-      font-size: 13px;
-      padding: 8px 16px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      border-radius: 6px;
-      cursor: pointer;
+      background: var(--bg);
       color: var(--text);
     }
-    button:hover:not(:disabled) { background: var(--surface-2); }
-    button.primary {
-      background: var(--accent);
-      color: #fff;
-      border-color: var(--accent);
+    .auth-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+
+    /* ================= Drop zone ================= */
+    .drop {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-lg);
+      padding: 36px 28px;
+      background: var(--surface);
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      position: relative;
     }
-    button.primary:hover:not(:disabled) { background: #0860ca; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .busy {
+    .drop:hover { border-color: var(--accent); background: var(--accent-dim); }
+    .drop.filled { border-style: solid; border-color: var(--accent); background: var(--accent-dim); }
+    .drop.dragging { border-color: var(--accent); background: var(--accent-dim); transform: scale(1.01); }
+    .drop input[type=file] { display: none; }
+    .drop-icon {
+      width: 48px; height: 48px;
+      margin: 0 auto 14px;
+      color: var(--text-subtle);
+      transition: color 0.15s ease, transform 0.15s ease;
+    }
+    .drop:hover .drop-icon, .drop.filled .drop-icon { color: var(--accent); }
+    .drop.filled .drop-icon { transform: translateY(-2px); }
+    .drop-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; color: var(--text); }
+    .drop-sub { font-size: 13px; color: var(--text-muted); }
+    .drop-sub .pill {
+      display: inline-block; font-family: var(--mono); font-size: 11px;
+      background: var(--bg); border: 1px solid var(--border-soft);
+      padding: 1px 6px; border-radius: 3px; margin: 2px;
+    }
+
+    .file-chip {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      color: var(--text-muted);
-      font-size: 13px;
+      gap: 10px;
+      padding: 8px 10px 8px 12px;
+      margin-top: 14px;
+      background: var(--bg);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text);
+      box-shadow: var(--shadow-sm);
+    }
+    .file-chip svg { width: 14px; height: 14px; color: var(--accent); flex-shrink: 0; }
+    .file-chip .size { color: var(--text-muted); }
+    .file-chip button {
+      background: none; border: none; padding: 2px 4px; cursor: pointer;
+      color: var(--text-subtle); border-radius: 3px; display: flex; align-items: center;
+    }
+    .file-chip button:hover { color: var(--red); background: var(--red-bg); }
+
+    .template-row {
+      display: flex; gap: 12px; align-items: center;
+      margin-top: 12px; font-size: 12.5px; color: var(--text-muted);
+    }
+    .template-row a {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--mono); font-weight: 500; font-size: 12px;
+    }
+    .template-row svg { width: 13px; height: 13px; }
+
+    /* ================= Buttons ================= */
+    .actions { display: flex; gap: 10px; align-items: center; margin-top: 24px; }
+    button {
+      font-family: var(--sans);
+      font-size: 13.5px;
+      font-weight: 500;
+      padding: 9px 18px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      border-radius: var(--radius);
+      cursor: pointer;
+      color: var(--text);
+      transition: all 0.1s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      box-shadow: var(--shadow-sm);
+    }
+    button:hover:not(:disabled) { background: var(--surface); border-color: var(--surface-3); }
+    button.primary {
+      background: var(--accent); color: #fff; border-color: var(--accent);
+    }
+    button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button svg { width: 15px; height: 15px; }
+
+    /* ================= Processing state ================= */
+    .processing {
+      display: none;
+      margin-top: 24px;
+      padding: 18px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .processing.active { display: block; }
+    .processing-head {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; color: var(--text);
     }
     .spinner {
-      width: 14px; height: 14px;
+      width: 16px; height: 16px;
       border: 2px solid var(--border);
       border-top-color: var(--accent);
       border-radius: 50%;
-      animation: spin 0.7s linear infinite;
+      animation: spin 0.6s linear infinite;
+      flex-shrink: 0;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .processing-note { margin-top: 8px; font-size: 12px; color: var(--text-muted); font-family: var(--mono); }
 
-    /* ---- Results panel ---- */
-    .results { display: none; margin-top: 28px; }
+    /* ================= Error box ================= */
+    .error-box {
+      display: none;
+      margin-top: 18px;
+      padding: 14px 16px;
+      background: var(--red-bg);
+      border: 1px solid var(--red-border);
+      border-radius: var(--radius);
+      color: var(--red);
+      font-size: 13px;
+    }
+    .error-box.shown { display: flex; align-items: flex-start; gap: 10px; }
+    .error-box svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; }
+    .error-box .msg { font-family: var(--mono); font-size: 12px; line-height: 1.5; }
+
+    /* ================= Results ================= */
+    .results { display: none; margin-top: 36px; }
     .results.shown { display: block; }
-
-    .stats {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 14px;
-    }
+    .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
     .stat {
-      flex: 1;
-      padding: 10px 14px;
-      border-radius: 6px;
-      font-family: var(--mono);
-      font-size: 12px;
+      padding: 16px 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid transparent;
+      position: relative;
+      overflow: hidden;
     }
-    .stat-num {
-      display: block;
-      font-size: 20px;
-      font-weight: 600;
-      margin-bottom: 2px;
-    }
-    .stat.ok    { background: var(--ok-bg);    color: var(--ok); }
-    .stat.amber { background: var(--amber-bg); color: var(--amber); }
-    .stat.red   { background: var(--red-bg);   color: var(--red); }
+    .stat.ok    { background: var(--ok-bg);    border-color: rgba(26,127,55,0.15);   color: var(--ok); }
+    .stat.amber { background: var(--amber-bg); border-color: rgba(154,103,0,0.18);   color: var(--amber); }
+    .stat.red   { background: var(--red-bg);   border-color: rgba(207,34,46,0.18);   color: var(--red); }
+    .stat-num { font-size: 28px; font-weight: 700; line-height: 1; margin-bottom: 4px; font-feature-settings: "tnum"; letter-spacing: -0.02em; }
+    .stat-label { font-size: 12px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85; }
+    .stat-icon { position: absolute; right: 12px; top: 14px; opacity: 0.35; width: 22px; height: 22px; }
 
-    .row-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-family: var(--mono);
-      font-size: 12px;
-      margin-top: 8px;
+    .download-row {
+      display: flex; gap: 12px; align-items: center; justify-content: space-between;
+      padding: 14px 18px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(9,105,218,0.2);
+      border-radius: var(--radius);
+      margin-bottom: 22px;
     }
-    .row-table th {
-      text-align: left;
-      padding: 8px 10px;
+    .download-row .text { font-size: 13.5px; color: var(--text); }
+    .download-row .text strong { color: var(--accent); }
+
+    /* ================= Rows table ================= */
+    .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    table.rows { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    table.rows th {
+      text-align: left; padding: 10px 14px;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
+      font-family: var(--mono); font-size: 10.5px;
+      color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em;
       font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      font-size: 10px;
-      letter-spacing: 0.05em;
     }
-    .row-table td {
-      padding: 7px 10px;
-      border-bottom: 1px solid var(--surface-2);
-      vertical-align: top;
-    }
-    .pill {
-      display: inline-block;
-      padding: 1px 8px;
-      border-radius: 3px;
-      font-size: 11px;
-      font-weight: 500;
-    }
-    .pill.ok    { background: var(--ok-bg);    color: var(--ok); }
-    .pill.amber { background: var(--amber-bg); color: var(--amber); }
-    .pill.red   { background: var(--red-bg);   color: var(--red); }
+    table.rows td { padding: 10px 14px; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
+    table.rows tr:last-child td { border-bottom: none; }
+    table.rows tr:hover td { background: var(--surface); }
+    table.rows td.num { font-family: var(--mono); color: var(--text); }
+    table.rows td.warn { font-family: var(--mono); font-size: 11.5px; color: var(--text-muted); }
 
-    .error-box {
-      padding: 12px 14px;
-      border: 1px solid var(--red);
-      background: var(--red-bg);
-      color: var(--red);
-      border-radius: 6px;
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 2px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 600;
       font-family: var(--mono);
-      font-size: 12px;
-      margin-top: 12px;
-      display: none;
     }
-    .error-box.shown { display: block; }
+    .badge .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .badge.ok    { background: var(--ok-bg);    color: var(--ok); }
+    .badge.ok .dot { background: var(--ok); }
+    .badge.amber { background: var(--amber-bg); color: var(--amber); }
+    .badge.amber .dot { background: var(--amber); }
+    .badge.red   { background: var(--red-bg);   color: var(--red); }
+    .badge.red .dot { background: var(--red); }
 
-    footer {
-      margin-top: 40px;
-      padding-top: 16px;
-      border-top: 1px solid var(--border);
-      color: var(--text-muted);
-      font-family: var(--mono);
-      font-size: 11px;
+    /* ================= Manual tab ================= */
+    .manual h1 { margin-top: 0; }
+    .manual .lead {
+      font-size: 15px; color: var(--text-muted); margin-bottom: 28px;
+      padding: 14px 18px; background: var(--surface); border-left: 3px solid var(--accent); border-radius: 4px;
     }
+    .step {
+      display: flex;
+      gap: 16px;
+      padding: 18px 20px;
+      margin-bottom: 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      transition: border-color 0.15s;
+    }
+    .step:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+    .step-num {
+      flex-shrink: 0;
+      width: 32px; height: 32px;
+      background: var(--accent); color: #fff;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-family: var(--mono); font-size: 14px;
+    }
+    .step h3 { margin: 4px 0 8px; }
+    .step p { margin: 0 0 8px; color: var(--text); }
+    .step p:last-child { margin-bottom: 0; }
+    .step ul { margin: 6px 0 0 0; padding-left: 20px; color: var(--text); }
+    .step li { margin-bottom: 4px; }
+
+    .status-legend {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+      margin: 16px 0 24px;
+    }
+    .legend-item {
+      padding: 14px 16px;
+      border-radius: var(--radius);
+      border: 1px solid;
+    }
+    .legend-item.ok    { background: var(--ok-bg);    border-color: rgba(26,127,55,0.2); }
+    .legend-item.amber { background: var(--amber-bg); border-color: rgba(154,103,0,0.22); }
+    .legend-item.red   { background: var(--red-bg);   border-color: rgba(207,34,46,0.22); }
+    .legend-item h4 { margin: 0 0 6px; font-size: 13px; }
+    .legend-item.ok h4    { color: var(--ok); }
+    .legend-item.amber h4 { color: var(--amber); }
+    .legend-item.red h4   { color: var(--red); }
+    .legend-item p { margin: 0; font-size: 12px; color: var(--text); }
+
+    .tip {
+      padding: 12px 16px;
+      background: var(--surface);
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      font-size: 13px;
+      margin: 14px 0;
+    }
+    .tip strong { color: var(--accent); }
+
+    pre.code {
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 14px 16px;
+      border-radius: var(--radius);
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.55;
+      margin: 10px 0;
+    }
+    pre.code .kw { color: #ff7b72; }
+    pre.code .st { color: #a5d6ff; }
+    pre.code .cm { color: #8b949e; font-style: italic; }
+
+    /* ================= About tab ================= */
+    .about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+    .about-card {
+      padding: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .about-card h4 { margin: 0 0 6px; font-size: 13px; color: var(--text); }
+    .about-card p { margin: 0; font-size: 12.5px; color: var(--text-muted); line-height: 1.55; }
+
+    /* ================= Status bar (bottom) ================= */
+    .statusbar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      height: 24px;
+      background: var(--accent); color: #fff;
+      display: flex; align-items: center;
+      padding: 0 14px;
+      font-family: var(--mono); font-size: 11px;
+      gap: 16px;
+      z-index: 10;
+    }
+    .statusbar .item { display: flex; align-items: center; gap: 5px; opacity: 0.95; }
+    .statusbar .right { margin-left: auto; }
 
     @media (max-width: 720px) {
-      .uploads { grid-template-columns: 1fr; }
-      .stats   { flex-direction: column; }
+      .main { padding: 20px 16px 60px; }
+      .stat-row { grid-template-columns: 1fr; }
+      .status-legend { grid-template-columns: 1fr; }
+      .about-grid { grid-template-columns: 1fr; }
+      .titlebar .right { display: none; }
     }
   </style>
 </head>
 <body>
 
+<!-- ======================= Chrome ======================= -->
 <div class="titlebar">
-  <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-  <span class="title">gemstone-intake · EZ JEMS Bulk Import Generator</span>
-</div>
-
-<div class="tabs">
-  <div class="tab active">intake.py</div>
-  <div class="tab">README.md</div>
-  <div class="tab">tests/</div>
-</div>
-
-<div class="wrap">
-  <h1>Build an EZ JEMS bulk import file</h1>
-  <p class="subtitle">
-    Upload the manager's intake Excel. The server fetches each cert from
-    aglthai.com, reads the fields off the image with Google Gemini, and
-    hands back an EZ&nbsp;JEMS-shaped bulk import file plus a row-level status.
-  </p>
-
-  <div class="auth-row" id="authRow">
-    <label for="apiKey">X-API-Key</label>
-    <input id="apiKey" type="password" autocomplete="off" placeholder="paste INTAKE_API_KEY here" />
+  <div class="traffic"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+  <div class="brand">gs-purchase-import<span style="color:var(--text-subtle)"> — </span><span class="accent">EZ JEMS intake</span></div>
+  <div class="right">
+    <span><span class="status-dot {{ '' if gemini_configured else 'off' }}"></span>Gemini {{ 'ready' if gemini_configured else 'not configured' }}</span>
   </div>
+</div>
 
-  <section>
-    <div class="section-title">1 · Input</div>
-    <div class="uploads single">
-      <div class="drop" id="dropIntake">
-        <a class="tmpl-link" href="/template/intake" download>⬇ template</a>
-        <div class="drop-label">Intake Excel</div>
-        <div class="drop-hint">Columns: Report&nbsp;No · Password · Unit&nbsp;Price · FWD&nbsp;LOC · FWD&nbsp;SSP · Lot&nbsp;No (optional)</div>
+<div class="tabs" role="tablist">
+  <div class="tab active" data-tab="intake" onclick="showTab('intake')">
+    <svg class="tab-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4"/>
+    </svg>
+    intake.py
+  </div>
+  <div class="tab" data-tab="manual" onclick="showTab('manual')">
+    <svg class="tab-icon mod" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+    </svg>
+    manual.md
+  </div>
+  <div class="tab" data-tab="about" onclick="showTab('about')">
+    <svg class="tab-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    about.md
+  </div>
+</div>
+
+<!-- ======================= Main ======================= -->
+<main class="main">
+  <div class="wrap">
+
+    <!-- ========== INTAKE PANEL ========== -->
+    <div class="panel active" id="panel-intake">
+
+      <h1>Build an EZ JEMS bulk import file</h1>
+      <p class="subtitle">
+        Upload the manager's intake Excel. The server fetches each cert from
+        <code>aglthai.com</code>, reads the fields off the image with Google Gemini,
+        and hands back a 29-column EZ&nbsp;JEMS import file plus a row-level status.
+      </p>
+
+      <div class="auth-row">
+        <label for="apiKey">X-API-Key</label>
+        <input id="apiKey" type="password" autocomplete="off" placeholder="paste INTAKE_API_KEY here" />
+      </div>
+
+      <div class="section-label">1 · Intake Excel</div>
+
+      <div class="drop" id="dropIntake" onclick="document.getElementById('intakeFile').click()">
+        <svg class="drop-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+        </svg>
+        <div class="drop-title">Drop your intake Excel here</div>
+        <div class="drop-sub">
+          or click to browse ·
+          <span class="pill">Report No</span>
+          <span class="pill">Password</span>
+          <span class="pill">Unit Price</span>
+          <span class="pill">FWD LOC</span>
+          <span class="pill">FWD SSP</span>
+          <span class="pill">Lot No</span>
+        </div>
         <input type="file" id="intakeFile" accept=".xlsx" />
-        <div class="filename" id="intakeName"></div>
-        <span class="help-toggle" onclick="document.getElementById('helpIntake').classList.toggle('open')">how it works</span>
-        <div class="help-panel" id="helpIntake">
-          Download the template with the ⬇&nbsp;link above, fill one row per stone, upload here, click Generate.
-          <ol>
-            <li>The server fetches each stone's cert image from <code>aglthai.com</code> using Report No + Password.</li>
-            <li>Google&nbsp;Gemini reads the fields off each cert image — Variety, Weight, Shape, Colour, Dimensions, Treatment, Origin.</li>
-            <li>Those get mapped to EZ&nbsp;JEMS values (ST, Shape code, Colour code), Item # generated via BULK&nbsp;PI logic, constants attached, output written in the 29-column GS_BULK_IMPORT format.</li>
-          </ol>
-          <code>Unit Price</code> is per carat; <code>FWD LOC</code> and <code>FWD SSP</code> vary per stone (fill both for every row).
-          <br><br>
-          Expect ~3 seconds per row (2s AGL rate limit + Gemini latency). 15 rows ≈ 45s.
+        <div id="fileChipWrap"></div>
+      </div>
+
+      <div class="template-row">
+        <a href="/template/intake" download>
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4"/></svg>
+          Download blank template
+        </a>
+        <span style="color: var(--text-subtle)">·</span>
+        <a href="#" onclick="showTab('manual'); return false;">Read the manual</a>
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="goBtn" disabled>
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          Generate import file
+        </button>
+      </div>
+
+      <div class="processing" id="processing">
+        <div class="processing-head"><div class="spinner"></div><span id="processingMsg">Fetching certs &amp; reading fields…</span></div>
+        <div class="processing-note">Each row takes about 3&nbsp;seconds (2s AGL rate-limit + Gemini latency). Please don't close this tab.</div>
+      </div>
+
+      <div class="error-box" id="errorBox">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <div class="msg" id="errorMsg"></div>
+      </div>
+
+      <div class="results" id="results">
+        <div class="section-label">2 · Output</div>
+
+        <div class="stat-row">
+          <div class="stat ok">
+            <div class="stat-num" id="statOk">0</div>
+            <div class="stat-label">OK rows</div>
+            <svg class="stat-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+          </div>
+          <div class="stat amber">
+            <div class="stat-num" id="statAmber">0</div>
+            <div class="stat-label">Amber (review)</div>
+            <svg class="stat-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          </div>
+          <div class="stat red">
+            <div class="stat-num" id="statRed">0</div>
+            <div class="stat-label">Red (skipped)</div>
+            <svg class="stat-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          </div>
+        </div>
+
+        <div class="download-row">
+          <div class="text"><strong>Your EZ JEMS import file is ready.</strong><br><span style="color: var(--text-muted); font-size: 12.5px;">Download it, then import into EZ JEMS as you normally would.</span></div>
+          <button class="primary" id="downloadBtn">
+            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4"/></svg>
+            Download .xlsx
+          </button>
+        </div>
+
+        <div class="section-label">Row-by-row status</div>
+        <div class="table-wrap">
+          <table class="rows">
+            <thead><tr><th>Report No</th><th>Status</th><th>Warnings</th></tr></thead>
+            <tbody id="rowTable"></tbody>
+          </table>
         </div>
       </div>
     </div>
-  </section>
 
-  <section>
-    <div class="section-title">2 · Run</div>
-    <div class="actions">
-      <button class="primary" id="goBtn" disabled>Generate import file</button>
-      <span class="busy" id="busy" style="display:none"><span class="spinner"></span>Fetching certs &amp; reading fields… (~3s per row)</span>
-    </div>
-    <div class="error-box" id="errorBox"></div>
-  </section>
+    <!-- ========== MANUAL PANEL ========== -->
+    <div class="panel manual" id="panel-manual">
+      <h1>User manual</h1>
+      <p class="lead">
+        End-to-end: from "we just bought these stones" to "they're in EZ&nbsp;JEMS". Takes about 5 minutes for a batch of 15 stones.
+      </p>
 
-  <section class="results" id="results">
-    <div class="section-title">3 · Output</div>
-    <div class="stats">
-      <div class="stat ok">    <span class="stat-num" id="statOk">0</span>ok rows</div>
-      <div class="stat amber"> <span class="stat-num" id="statAmber">0</span>amber rows</div>
-      <div class="stat red">   <span class="stat-num" id="statRed">0</span>red rows (skipped)</div>
-    </div>
-    <div class="actions">
-      <button class="primary" id="downloadBtn">⬇ Download EZ JEMS import</button>
-    </div>
-    <div class="section-title" style="margin-top:20px">Row status</div>
-    <table class="row-table">
-      <thead><tr><th>Report No</th><th>Status</th><th>Warnings</th></tr></thead>
-      <tbody id="rowTable"></tbody>
-    </table>
-  </section>
+      <h2>Before you start</h2>
+      <p style="color: var(--text-muted)">You need two things:</p>
+      <ul style="color: var(--text); margin-top: 4px;">
+        <li><strong>The X-API-Key</strong> for this app (saved in your password manager when you deployed it)</li>
+        <li><strong>The AGL Report Numbers + Passwords</strong> for the stones you're importing (same ones you'd use at <code>aglthai.com/report_check.php</code>)</li>
+      </ul>
 
-  <footer>
-    gemstone-intake · companion to AGL Report Fetcher · BULK PI GENERATOR
-  </footer>
+      <h2>Steps</h2>
+
+      <div class="step">
+        <div class="step-num">1</div>
+        <div>
+          <h3>Download the intake template</h3>
+          <p>Go to the <strong>intake.py</strong> tab and click <strong>"Download blank template"</strong>. You'll get <code>gs_purchase_intake_template.xlsx</code> with the right column headers.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">2</div>
+        <div>
+          <h3>Fill one row per stone</h3>
+          <p>Open the template in Excel. One row per stone you're adding. Columns:</p>
+          <ul>
+            <li><code>Report No</code> — AGL report number exactly as shown on the cert</li>
+            <li><code>Password</code> — the lookup password AGL sent (digits only; "PASS 0998" is fine, the server extracts the digits)</li>
+            <li><code>Unit Price</code> — <strong>per carat</strong>, in whichever currency the whole batch uses (don't mix currencies in one file)</li>
+            <li><code>FWD LOC</code> — forward location for this stone (varies per stone)</li>
+            <li><code>FWD SSP</code> — forward SSP for this stone (varies per stone)</li>
+            <li><code>Lot No</code> — optional; leave blank if not using</li>
+          </ul>
+          <div class="tip"><strong>Tip:</strong> Delete the example row before you add yours.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">3</div>
+        <div>
+          <h3>Upload the file</h3>
+          <p>Back on the <strong>intake.py</strong> tab, paste your <code>X-API-Key</code> if prompted. Then drag the Excel file onto the drop zone (or click to browse).</p>
+          <p>The file name will appear in a pill confirming it's loaded.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">4</div>
+        <div>
+          <h3>Click Generate &amp; wait</h3>
+          <p>Click <strong>Generate import file</strong>. Expect <strong>~3 seconds per row</strong> (2s polite delay to AGL + Gemini latency). A batch of 15 stones takes about 45 seconds; a batch of 50 takes about 2.5 minutes.</p>
+          <p>Don't close the tab while it's processing.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">5</div>
+        <div>
+          <h3>Review the row statuses</h3>
+          <p>When processing finishes, you'll see 3 stat cards — OK / Amber / Red — and a table below listing every row.</p>
+          <div class="status-legend">
+            <div class="legend-item ok">
+              <h4>OK</h4>
+              <p>Every field extracted + mapped cleanly. Safe to import as-is.</p>
+            </div>
+            <div class="legend-item amber">
+              <h4>Amber (review)</h4>
+              <p>Row is written to the output but one or more fields need checking. The Warnings column says what's off; the <code>__Raw AGL *</code> side columns in the output file carry the original cert values for reference.</p>
+            </div>
+            <div class="legend-item red">
+              <h4>Red (skipped)</h4>
+              <p>Row is <strong>not</strong> written to the output. Usually a bad Report No / Password, or AGL couldn't return the cert. Fix the intake row and re-run.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">6</div>
+        <div>
+          <h3>Download the import file</h3>
+          <p>Click <strong>Download .xlsx</strong>. You'll get <code>ezjems_bulk_import.xlsx</code>.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">7</div>
+        <div>
+          <h3>Fix amber rows (if any)</h3>
+          <p>Open the downloaded file in Excel. Any amber row will have the problem field blank (or holding an unmapped value) — look at the <code>__Status</code> and <code>__Warnings</code> columns on the far right.</p>
+          <p>Common amber cases:</p>
+          <ul>
+            <li>Unmapped <strong>colour phrase</strong> (e.g. a rare descriptor Sonesh hasn't added yet) → type the right 3-letter code into the <code>Color</code> cell</li>
+            <li>Unmapped <strong>stone variety</strong> → type the ST and fix the Item # prefix</li>
+          </ul>
+          <p>Delete the <code>__Status</code>, <code>__Warnings</code>, and <code>__Raw AGL *</code> columns before importing (optional — EZ JEMS ignores them, but your file will be cleaner).</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">8</div>
+        <div>
+          <h3>Import into EZ JEMS</h3>
+          <p>In EZ JEMS, open the bulk purchase-intake import screen. Pick the currency that matches your intake file. Upload the <code>.xlsx</code>.</p>
+          <p>Done — your stones are in the ERP with Item&nbsp;#s, measurements, colour codes, and FWD values populated.</p>
+        </div>
+      </div>
+
+      <h2>Troubleshooting</h2>
+
+      <div class="step">
+        <div class="step-num" style="background: var(--amber);">?</div>
+        <div>
+          <h3>"server missing GEMINI_API_KEY"</h3>
+          <p>The Gemini key secret isn't set on the server. In PowerShell on the deploying machine: <code>fly secrets set GEMINI_API_KEY="your-key"</code>, then <code>fly deploy</code>.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num" style="background: var(--amber);">?</div>
+        <div>
+          <h3>"AGL fetch failed: no report image"</h3>
+          <p>The Report No / Password combo didn't match on aglthai.com. Fix the intake row — remember passwords are digits-only, and the Report No must match exactly (dashes, spaces, letters all preserved).</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num" style="background: var(--amber);">?</div>
+        <div>
+          <h3>"vision extract failed"</h3>
+          <p>Gemini couldn't read the cert image. Usually a transient network blip — just re-run. If it persists, check the Gemini key hasn't been rate-limited or revoked at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num" style="background: var(--amber);">?</div>
+        <div>
+          <h3>"unauthorized (bad or missing X-API-Key)"</h3>
+          <p>The X-API-Key field is empty or wrong. Paste the value from your password manager — it's a 48-char hex string.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== ABOUT PANEL ========== -->
+    <div class="panel" id="panel-about">
+      <h1>About this module</h1>
+      <p class="subtitle">
+        Automates gemstone purchase intake into the EZ&nbsp;JEMS ERP. Built to replace the manager's manual field-by-field data entry off every AGL certificate.
+      </p>
+
+      <h2>What it does</h2>
+      <p>For each stone in the intake Excel:</p>
+      <ol style="padding-left: 22px; color: var(--text);">
+        <li>Posts Report&nbsp;No + Password to aglthai.com's Report Check form (ports <a href="https://github.com/Diacrown/Certificate-Scrapper" target="_blank" rel="noopener">Certificate-Scrapper</a>'s lookup, 2s rate-limited).</li>
+        <li>Sends the returned cert image to <strong>Google Gemini</strong> for structured field extraction.</li>
+        <li>Maps AGL wording → EZ&nbsp;JEMS values via editable glossaries (variety → ST, shape → 3-letter + 2-digit codes, colour collapsing, OCT→EME override).</li>
+        <li>Generates the Item # using BULK PI GENERATOR's gemstone convention (<code>{ST}{shape}{colour}{measurement}</code>).</li>
+        <li>Writes a 29-column file matching <code>GS_BULK_IMPORT.xlsx</code> plus 7 side columns the ERP ignores (__Status, __Warnings, __Raw AGL&nbsp;*).</li>
+      </ol>
+
+      <h2>Sonesh master-data decisions baked in (2026-11-09)</h2>
+      <div class="about-grid">
+        <div class="about-card"><h4>Unit Price</h4><p>Per carat (passed through unchanged).</p></div>
+        <div class="about-card"><h4>Currency</h4><p>Per-import setting at ERP side. One output file = one currency.</p></div>
+        <div class="about-card"><h4>Report No</h4><p>Required for every intake row.</p></div>
+        <div class="about-card"><h4>ST column</h4><p>3-letter short code (matches Item # prefix).</p></div>
+        <div class="about-card"><h4>FWD LOC / FWD SSP</h4><p>Vary per stone — fill per-row.</p></div>
+        <div class="about-card"><h4>Inv Effect</h4><p>Constant 1 for every row.</p></div>
+        <div class="about-card"><h4>Treatment + Origin</h4><p>Not tracked at ERP intake. Preserved in __Raw AGL&nbsp;* side columns.</p></div>
+        <div class="about-card"><h4>Diamond intake</h4><p>Out of scope. Gemstones only.</p></div>
+      </div>
+
+      <h2>Repo &amp; tech</h2>
+      <p>Source: <a href="https://github.com/Diacrown/GS-Purchase-Import" target="_blank" rel="noopener">github.com/Diacrown/GS-Purchase-Import</a> · Flask + gunicorn, deployed to Fly.io (Singapore).</p>
+    </div>
+
+  </div>
+</main>
+
+<!-- ======================= Status bar ======================= -->
+<div class="statusbar">
+  <span class="item">◆ main</span>
+  <span class="item">● Python 3.11</span>
+  <span class="item">◇ fly.io/sin</span>
+  <span class="item right">UTF-8</span>
+  <span class="item">LF</span>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
 
-const intakeInput = $("intakeFile");
-const goBtn = $("goBtn");
-const busy = $("busy");
-const errorBox = $("errorBox");
-const results = $("results");
-const downloadBtn = $("downloadBtn");
-const apiKeyInput = $("apiKey");
+// --- Tab switching --------------------------------------------------------
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+  window.scrollTo(0, 0);
+}
 
-let lastFileB64 = null;
-let lastFileName = "ezjems_bulk_import.xlsx";
-
-// Persist API key in localStorage so the manager isn't retyping it
+// --- API key persistence --------------------------------------------------
+const apiKeyInput = $('apiKey');
 if (apiKeyInput) {
-  const saved = localStorage.getItem("intake_api_key");
+  const saved = localStorage.getItem('intake_api_key');
   if (saved) apiKeyInput.value = saved;
-  apiKeyInput.addEventListener("input", () => {
-    localStorage.setItem("intake_api_key", apiKeyInput.value);
+  apiKeyInput.addEventListener('input', () => {
+    localStorage.setItem('intake_api_key', apiKeyInput.value);
   });
 }
 
-function updateGoButton() {
-  goBtn.disabled = !intakeInput.files[0];
+// --- File selection -------------------------------------------------------
+const intakeInput = $('intakeFile');
+const dropZone = $('dropIntake');
+const chipWrap = $('fileChipWrap');
+const goBtn = $('goBtn');
+
+function updateGo() { goBtn.disabled = !intakeInput.files[0]; }
+
+function renderChip(file) {
+  chipWrap.innerHTML = `
+    <div class="file-chip">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+      <span>${file.name}</span>
+      <span class="size">${(file.size / 1024).toFixed(1)} KB</span>
+      <button onclick="event.stopPropagation(); clearFile()" title="Remove">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>`;
 }
 
-function bindFileInput(input, nameEl, dropEl) {
-  input.addEventListener("change", () => {
-    const f = input.files[0];
-    if (f) {
-      nameEl.textContent = f.name + " · " + (f.size / 1024).toFixed(1) + " KB";
-      dropEl.classList.add("filled");
-    } else {
-      nameEl.textContent = "";
-      dropEl.classList.remove("filled");
-    }
-    updateGoButton();
-  });
+function clearFile() {
+  intakeInput.value = '';
+  chipWrap.innerHTML = '';
+  dropZone.classList.remove('filled');
+  updateGo();
 }
 
-bindFileInput(intakeInput, $("intakeName"), $("dropIntake"));
+intakeInput.addEventListener('change', () => {
+  const f = intakeInput.files[0];
+  if (f) {
+    dropZone.classList.add('filled');
+    renderChip(f);
+  } else {
+    clearFile();
+  }
+  updateGo();
+});
 
-function showError(msg) {
-  errorBox.textContent = "Error: " + msg;
-  errorBox.classList.add("shown");
-}
-function clearError() {
-  errorBox.classList.remove("shown");
-  errorBox.textContent = "";
-}
+// Drag and drop
+['dragenter', 'dragover'].forEach(ev => dropZone.addEventListener(ev, (e) => {
+  e.preventDefault(); e.stopPropagation(); dropZone.classList.add('dragging');
+}));
+['dragleave', 'drop'].forEach(ev => dropZone.addEventListener(ev, (e) => {
+  e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('dragging');
+}));
+dropZone.addEventListener('drop', (e) => {
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.endsWith('.xlsx')) {
+    intakeInput.files = e.dataTransfer.files;
+    intakeInput.dispatchEvent(new Event('change'));
+  }
+});
 
-goBtn.addEventListener("click", async () => {
+// --- Submit ---------------------------------------------------------------
+const processing = $('processing');
+const results = $('results');
+const errorBox = $('errorBox');
+const errorMsg = $('errorMsg');
+const downloadBtn = $('downloadBtn');
+let lastFileB64 = null;
+let lastFileName = 'ezjems_bulk_import.xlsx';
+
+function showError(msg) { errorMsg.textContent = msg; errorBox.classList.add('shown'); }
+function clearError() { errorBox.classList.remove('shown'); errorMsg.textContent = ''; }
+
+goBtn.addEventListener('click', async () => {
   clearError();
-  results.classList.remove("shown");
+  results.classList.remove('shown');
   goBtn.disabled = true;
-  busy.style.display = "inline-flex";
+  processing.classList.add('active');
 
   const fd = new FormData();
-  fd.append("intake", intakeInput.files[0]);
-  if (apiKeyInput && apiKeyInput.value) {
-    fd.append("api_key", apiKeyInput.value);
-  }
+  fd.append('intake', intakeInput.files[0]);
+  if (apiKeyInput && apiKeyInput.value) fd.append('api_key', apiKeyInput.value);
 
   try {
     const headers = {};
-    if (apiKeyInput && apiKeyInput.value) {
-      headers["X-API-Key"] = apiKeyInput.value;
-    }
-    const resp = await fetch("/run", { method: "POST", body: fd, headers });
-    const data = await resp.json().catch(() => ({ error: "non-JSON response" }));
-    if (!resp.ok) {
-      showError(data.error || ("HTTP " + resp.status));
-      return;
-    }
+    if (apiKeyInput && apiKeyInput.value) headers['X-API-Key'] = apiKeyInput.value;
+    const resp = await fetch('/run', { method: 'POST', body: fd, headers });
+    const data = await resp.json().catch(() => ({ error: 'non-JSON response' }));
+    if (!resp.ok) { showError(data.error || ('HTTP ' + resp.status)); return; }
 
-    // Render results
-    $("statOk").textContent    = data.rows_written - data.rows_amber;
-    $("statAmber").textContent = data.rows_amber;
-    $("statRed").textContent   = data.rows_red;
+    const okCount = (data.rows_written - data.rows_amber);
+    $('statOk').textContent    = okCount;
+    $('statAmber').textContent = data.rows_amber;
+    $('statRed').textContent   = data.rows_red;
 
-    const tbody = $("rowTable");
-    tbody.innerHTML = "";
+    const tbody = $('rowTable');
+    tbody.innerHTML = '';
     for (const r of data.per_row) {
-      const tr = document.createElement("tr");
-      const cls = r.status === "ok" ? "ok" : (r.status === "red" || r.status === "failed") ? "red" : "amber";
+      const tr = document.createElement('tr');
+      const cls = r.status === 'ok' ? 'ok' : (r.status === 'red' || r.status === 'failed') ? 'red' : 'amber';
       tr.innerHTML = `
-        <td>${r.report_no || "—"}</td>
-        <td><span class="pill ${cls}">${r.status}</span></td>
-        <td>${(r.warnings || []).join("; ")}</td>
-      `;
+        <td class="num">${r.report_no || '—'}</td>
+        <td><span class="badge ${cls}"><span class="dot"></span>${r.status}</span></td>
+        <td class="warn">${(r.warnings || []).join('; ')}</td>`;
       tbody.appendChild(tr);
     }
 
     lastFileB64 = data.file_b64;
-    lastFileName = data.file_name || "ezjems_bulk_import.xlsx";
-    results.classList.add("shown");
+    lastFileName = data.file_name || 'ezjems_bulk_import.xlsx';
+    results.classList.add('shown');
 
   } catch (e) {
     showError(e.message || String(e));
   } finally {
-    busy.style.display = "none";
+    processing.classList.remove('active');
     goBtn.disabled = false;
   }
 });
 
-downloadBtn.addEventListener("click", () => {
+downloadBtn.addEventListener('click', () => {
   if (!lastFileB64) return;
   const bin = atob(lastFileB64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  const blob = new Blob([bytes], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-  });
+  const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = lastFileName;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  const a = document.createElement('a');
+  a.href = url; a.download = lastFileName;
+  document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 });
 </script>
