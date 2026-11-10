@@ -957,15 +957,17 @@ goBtn.addEventListener('click', async () => {
     $('statAmber').textContent = data.rows_amber;
     $('statRed').textContent   = data.rows_red;
 
+    const esc = (v) => String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const tbody = $('rowTable');
     tbody.innerHTML = '';
     for (const r of data.per_row) {
       const tr = document.createElement('tr');
       const cls = r.status === 'ok' ? 'ok' : (r.status === 'red' || r.status === 'failed') ? 'red' : 'amber';
       tr.innerHTML = `
-        <td class="num">${r.report_no || '—'}</td>
-        <td><span class="badge ${cls}"><span class="dot"></span>${r.status}</span></td>
-        <td class="warn">${(r.warnings || []).join('; ')}</td>`;
+        <td class="num">${esc(r.report_no) || '—'}</td>
+        <td><span class="badge ${cls}"><span class="dot"></span>${esc(r.status)}</span></td>
+        <td class="warn">${esc((r.warnings || []).join('; '))}</td>`;
       tbody.appendChild(tr);
     }
 
