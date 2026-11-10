@@ -23,13 +23,13 @@ COPY --chown=intake:intake app/ ./app/
 
 EXPOSE 8080
 
-# Gunicorn: 2 workers is enough for the pipeline's workload (CPU-bound Excel
-# parsing). Bump `--workers` if you scale up. 120s timeout for large batches.
-# Longer timeout: each row takes ~3s (2s AGL rate limit + Gemini latency).
-# 600s accommodates a batch of up to ~200 stones in one request.
+# IMPORTANT: ONE worker + many threads. Background jobs live in this process's
+# memory (JOBS dict), so every poll to /jobs/<id> must hit the same process.
+# Threads handle concurrent requests; the pipeline is I/O-bound (AGL + Gemini).
 CMD ["gunicorn", \
      "--bind", "0.0.0.0:8080", \
-     "--workers", "2", \
+     "--workers", "1", \
+     "--threads", "8", \
      "--timeout", "600", \
      "--access-logfile", "-", \
      "--error-logfile", "-", \
