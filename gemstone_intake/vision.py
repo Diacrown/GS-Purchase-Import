@@ -87,9 +87,12 @@ def extract_from_image(
         report.missing_fields = ["<GEMINI_API_KEY not set>"]
         return report
 
+    model_to_use = model_name or GEMINI_MODEL
+    print(f"[vision] calling {model_to_use} on {len(image_bytes)}-byte {mime_type}", flush=True)
+
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name or GEMINI_MODEL)
+        model = genai.GenerativeModel(model_to_use)
         response = model.generate_content(
             [
                 {"mime_type": mime_type, "data": image_bytes},
@@ -102,16 +105,36 @@ def extract_from_image(
             },
         )
     except Exception as e:
+        print(f"[vision] ERROR calling Gemini: {type(e).__name__}: {e}", flush=True)
         report.extraction_status = "failed"
         report.missing_fields = [f"<gemini error: {type(e).__name__}: {e}>"]
         return report
 
-    # Extract the text payload.
-    text = getattr(response, "text", None)
+    # Extract the text payload defensively — response.text can raise on blocked content
+    text = None
+    try:
+        text = response.text
+    except Exception as e:
+        print(f"[vision] response.text raised: {type(e).__name__}: {e}", flush=True)
+        # Try to get useful info from candidates
+        candidates_info = ""
+        try:
+            if hasattr(response, "candidates") and response.candidates:
+                c = response.candidates[0]
+                candidates_info = f" finish_reason={getattr(c, 'finish_reason', '?')}"
+        except Exception:
+            pass
+        report.extraction_status = "failed"
+        report.missing_fields = [f"<response.text raised: {type(e).__name__}{candidates_info}>"]
+        return report
+
     if not text:
+        print(f"[vision] empty gemini response; prompt_feedback={getattr(response, 'prompt_feedback', '?')}", flush=True)
         report.extraction_status = "failed"
         report.missing_fields = ["<empty gemini response>"]
         return report
+
+    print(f"[vision] got {len(text)}-char response, first 200: {text[:200]!r}", flush=True)
 
     try:
         data = json.loads(text)

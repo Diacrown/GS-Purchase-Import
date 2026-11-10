@@ -288,14 +288,16 @@ def run_pipeline_live(
             continue
 
         # --- 1. Fetch cert image -------------------------------------------
+        print(f"[pipeline] row {i}/{total}: fetching AGL report {report_no!r}", flush=True)
         try:
             img_bytes, ext = fetch_report_image(report_no, password, session=session)
+            print(f"[pipeline] fetched {len(img_bytes)} bytes, ext={ext}", flush=True)
         except Exception as e:
+            print(f"[pipeline] AGL fetch FAILED for {report_no}: {type(e).__name__}: {e}", flush=True)
             pairs.append((intake, MappingResult(
                 status="failed", row={},
                 warnings=[f"AGL fetch failed: {type(e).__name__}: {e}"],
             )))
-            # Still respect the delay before the next AGL call
             if i < total and delay_seconds > 0:
                 time.sleep(delay_seconds)
             continue
@@ -303,7 +305,9 @@ def run_pipeline_live(
         # --- 2. Extract fields with Gemini ---------------------------------
         try:
             report = extract_from_image(img_bytes, mime_type=mime_for_ext(ext))
+            print(f"[pipeline] vision status={report.extraction_status} missing={report.missing_fields}", flush=True)
         except Exception as e:
+            print(f"[pipeline] vision call RAISED for {report_no}: {type(e).__name__}: {e}", flush=True)
             pairs.append((intake, MappingResult(
                 status="failed", row={},
                 warnings=[f"vision extract failed: {type(e).__name__}: {e}"],
