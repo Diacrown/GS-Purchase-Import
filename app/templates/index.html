@@ -273,6 +273,19 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     .processing-note { margin-top: 8px; font-size: 12px; color: var(--text-muted); font-family: var(--mono); }
+    .progress-bar {
+      margin-top: 12px;
+      height: 6px;
+      background: var(--surface-2);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.4s ease;
+    }
 
     /* ================= Error box ================= */
     .error-box {
@@ -545,8 +558,9 @@
       </div>
 
       <div class="processing" id="processing">
-        <div class="processing-head"><div class="spinner"></div><span id="processingMsg">Fetching certs &amp; reading fields…</span></div>
-        <div class="processing-note">Each row takes about 3&nbsp;seconds (2s AGL rate-limit + Gemini latency). Please don't close this tab.</div>
+        <div class="processing-head"><div class="spinner"></div><span id="processingMsg">Starting job…</span></div>
+        <div class="processing-note" id="processingNote">Each row takes about 3&nbsp;seconds (2s AGL rate-limit + Gemini latency). You can leave this tab open and come back — the job continues on the server.</div>
+        <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
       </div>
 
       <div class="error-box" id="errorBox">
@@ -872,24 +886,73 @@ let lastFileName = 'ezjems_bulk_import.xlsx';
 function showError(msg) { errorMsg.textContent = msg; errorBox.classList.add('shown'); }
 function clearError() { errorBox.classList.remove('shown'); errorMsg.textContent = ''; }
 
+const processingMsg = $('processingMsg');
+const processingNote = $('processingNote');
+const progressFill = $('progressFill');
+
+function headersWithKey() {
+  const h = {};
+  if (apiKeyInput && apiKeyInput.value) h['X-API-Key'] = apiKeyInput.value;
+  return h;
+}
+
+async function pollJob(jobId) {
+  while (true) {
+    await new Promise(r => setTimeout(r, 2000));
+    let resp, data;
+    try {
+      resp = await fetch('/jobs/' + jobId, { headers: headersWithKey() });
+      data = await resp.json();
+    } catch (e) {
+      // Transient network blip — retry once more before giving up
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        resp = await fetch('/jobs/' + jobId, { headers: headersWithKey() });
+        data = await resp.json();
+      } catch (e2) {
+        throw new Error('lost connection to server while polling job');
+      }
+    }
+    if (!resp.ok) throw new Error(data.error || ('HTTP ' + resp.status));
+
+    if (data.progress && data.progress.total) {
+      const pct = Math.round(100 * data.progress.current / data.progress.total);
+      progressFill.style.width = pct + '%';
+      processingMsg.textContent =
+        `Processing row ${data.progress.current} of ${data.progress.total} — ${data.progress.report_no || ''}`;
+    }
+
+    if (data.status === 'done') return data;
+    if (data.status === 'failed') throw new Error(data.error || 'job failed');
+    // else: still running — keep polling
+  }
+}
+
 goBtn.addEventListener('click', async () => {
   clearError();
   results.classList.remove('shown');
   goBtn.disabled = true;
   processing.classList.add('active');
+  progressFill.style.width = '0%';
+  processingMsg.textContent = 'Starting job…';
 
   const fd = new FormData();
   fd.append('intake', intakeInput.files[0]);
   if (apiKeyInput && apiKeyInput.value) fd.append('api_key', apiKeyInput.value);
 
   try {
-    const headers = {};
-    if (apiKeyInput && apiKeyInput.value) headers['X-API-Key'] = apiKeyInput.value;
-    const resp = await fetch('/run', { method: 'POST', body: fd, headers });
-    const data = await resp.json().catch(() => ({ error: 'non-JSON response' }));
-    if (!resp.ok) { showError(data.error || ('HTTP ' + resp.status)); return; }
+    const startResp = await fetch('/run', {
+      method: 'POST', body: fd, headers: headersWithKey(),
+    });
+    const startData = await startResp.json().catch(() => ({ error: 'non-JSON response from /run' }));
+    if (!startResp.ok) { showError(startData.error || ('HTTP ' + startResp.status)); return; }
 
-    const okCount = (data.rows_written - data.rows_amber);
+    const jobId = startData.job_id;
+    processingMsg.textContent = 'Job ' + jobId + ' started — fetching first cert…';
+
+    const data = await pollJob(jobId);
+
+    const okCount = data.rows_written - data.rows_amber;
     $('statOk').textContent    = okCount;
     $('statAmber').textContent = data.rows_amber;
     $('statRed').textContent   = data.rows_red;
@@ -914,6 +977,7 @@ goBtn.addEventListener('click', async () => {
     showError(e.message || String(e));
   } finally {
     processing.classList.remove('active');
+    progressFill.style.width = '0%';
     goBtn.disabled = false;
   }
 });

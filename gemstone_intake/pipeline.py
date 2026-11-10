@@ -58,14 +58,25 @@ def read_intake(path: Path) -> list[dict]:
     """
     Read the manager's intake workbook. Expects the INTAKE_COLUMNS above as
     the header row. `Lot No` is optional.
+
+    Finds the FIRST sheet whose header row contains all required columns —
+    multi-sheet workbooks (with a readme tab etc.) work fine.
     """
     wb = load_workbook(path, data_only=True)
-    ws = wb.active
+    ws = None
+    for candidate in wb.worksheets:
+        headers = [c.value for c in candidate[1]]
+        if all(h in headers for h in REQUIRED_INTAKE_COLUMNS):
+            ws = candidate
+            break
+    if ws is None:
+        # Fall back to the active sheet so the error message is informative
+        ws = wb.active
     headers = [c.value for c in ws[1]]
     missing = [h for h in REQUIRED_INTAKE_COLUMNS if h not in headers]
     if missing:
-        raise ValueError(f"intake file missing required columns: {missing}; "
-                         f"got: {headers}")
+        raise ValueError(f"no sheet in the workbook has the required intake columns: "
+                         f"{missing} missing; sheets tried: {wb.sheetnames}")
 
     idx = {h: headers.index(h) for h in headers if h in INTAKE_COLUMNS}
     rows: list[dict] = []
