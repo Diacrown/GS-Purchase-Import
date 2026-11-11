@@ -13,7 +13,9 @@ AGL responses folder:
 from __future__ import annotations
 
 import json
+import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -269,65 +271,78 @@ def run_pipeline_live(
     session = requests.Session()
     total = len(intake_rows)
 
-    for i, intake in enumerate(intake_rows, start=1):
-        report_no_raw = intake.get("Report No")
-        password_raw = intake.get("Password")
-        report_no = str(report_no_raw).strip() if report_no_raw else ""
-        password = parse_password(password_raw) or (
-            str(password_raw).strip() if password_raw else ""
-        )
+    # AGL lookups stay sequential (polite 2s spacing); Gemini reads run in
+    # parallel in a thread pool so total time ~ AGL spacing, not AGL + Gemini
+    # latency per row. Results are collected back in original row order.
+    workers = max(1, int(os.environ.get("VISION_CONCURRENCY", "5")))
+    # slots[i] = ("done", intake, MappingResult) | ("future", intake, Future)
+    slots: list[tuple] = []
 
-        if progress:
-            progress(i, total, report_no or "<blank>")
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for i, intake in enumerate(intake_rows, start=1):
+            report_no_raw = intake.get("Report No")
+            password_raw = intake.get("Password")
+            report_no = str(report_no_raw).strip() if report_no_raw else ""
+            password = parse_password(password_raw) or (
+                str(password_raw).strip() if password_raw else ""
+            )
 
-        if not report_no or not password:
-            pairs.append((intake, MappingResult(
-                status="failed", row={},
-                warnings=["missing Report No or Password in intake row"],
-            )))
-            continue
+            if progress:
+                progress(i, total, report_no or "<blank>")
 
-        # --- 1. Fetch cert image -------------------------------------------
-        print(f"[pipeline] row {i}/{total}: fetching AGL report {report_no!r}", flush=True)
-        try:
-            img_bytes, ext = fetch_report_image(report_no, password, session=session)
-            print(f"[pipeline] fetched {len(img_bytes)} bytes, ext={ext}", flush=True)
-        except Exception as e:
-            print(f"[pipeline] AGL fetch FAILED for {report_no}: {type(e).__name__}: {e}", flush=True)
-            pairs.append((intake, MappingResult(
-                status="failed", row={},
-                warnings=[f"AGL fetch failed: {type(e).__name__}: {e}"],
-            )))
+            if not report_no or not password:
+                slots.append(("done", intake, MappingResult(
+                    status="failed", row={},
+                    warnings=["missing Report No or Password in intake row"],
+                )))
+                continue
+
+            # --- 1. Fetch cert image (sequential, rate-limited) ------------
+            print(f"[pipeline] row {i}/{total}: fetching AGL report {report_no!r}", flush=True)
+            try:
+                img_bytes, ext = fetch_report_image(report_no, password, session=session)
+                print(f"[pipeline] fetched {len(img_bytes)} bytes, ext={ext}", flush=True)
+            except Exception as e:
+                print(f"[pipeline] AGL fetch FAILED for {report_no}: {type(e).__name__}: {e}", flush=True)
+                slots.append(("done", intake, MappingResult(
+                    status="failed", row={},
+                    warnings=[f"AGL fetch failed: {type(e).__name__}: {e}"],
+                )))
+                if i < total and delay_seconds > 0:
+                    time.sleep(delay_seconds)
+                continue
+
+            # --- 2. Gemini read (parallel) ---------------------------------
+            fut = pool.submit(extract_from_image, img_bytes, mime_for_ext(ext))
+            slots.append(("future", intake, fut))
+
             if i < total and delay_seconds > 0:
                 time.sleep(delay_seconds)
-            continue
 
-        # --- 2. Extract fields with Gemini ---------------------------------
-        try:
-            report = extract_from_image(img_bytes, mime_type=mime_for_ext(ext))
-            print(f"[pipeline] vision status={report.extraction_status} missing={report.missing_fields}", flush=True)
-        except Exception as e:
-            print(f"[pipeline] vision call RAISED for {report_no}: {type(e).__name__}: {e}", flush=True)
-            pairs.append((intake, MappingResult(
-                status="failed", row={},
-                warnings=[f"vision extract failed: {type(e).__name__}: {e}"],
+        # --- 3. Collect in order, map + flag -------------------------------
+        for idx, (kind, intake, payload) in enumerate(slots, start=1):
+            if kind == "done":
+                pairs.append((intake, payload))
+                continue
+            if progress:
+                progress(idx, total, f"reading certificate {idx}/{total}")
+            try:
+                report = payload.result()
+                print(f"[pipeline] vision status={report.extraction_status} missing={report.missing_fields}", flush=True)
+            except Exception as e:
+                print(f"[pipeline] vision call RAISED: {type(e).__name__}: {e}", flush=True)
+                pairs.append((intake, MappingResult(
+                    status="failed", row={},
+                    warnings=[f"vision extract failed: {type(e).__name__}: {e}"],
+                )))
+                continue
+            pairs.append((intake, agl_to_erp_row(
+                report,
+                unit_price=intake.get("Unit Price"),
+                fwd_loc=intake.get("FWD LOC"),
+                fwd_ssp=intake.get("FWD SSP"),
+                lot_no=intake.get("Lot No"),
+                constants=constants,
             )))
-            if i < total and delay_seconds > 0:
-                time.sleep(delay_seconds)
-            continue
-
-        # --- 3. Map + flag --------------------------------------------------
-        mr = agl_to_erp_row(
-            report,
-            unit_price=intake.get("Unit Price"),
-            fwd_loc=intake.get("FWD LOC"),
-            fwd_ssp=intake.get("FWD SSP"),
-            lot_no=intake.get("Lot No"),
-            constants=constants,
-        )
-        pairs.append((intake, mr))
-
-        if i < total and delay_seconds > 0:
-            time.sleep(delay_seconds)
 
     return write_output(pairs, out_path)

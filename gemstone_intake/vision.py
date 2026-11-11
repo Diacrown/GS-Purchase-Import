@@ -92,23 +92,38 @@ def extract_from_image(
     import time as _t
     _t0 = _t.time()
 
-    try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_to_use)
-        response = model.generate_content(
-            [
-                {"mime_type": mime_type, "data": image_bytes},
-                EXTRACTION_PROMPT,
-            ],
-            generation_config={
-                "response_mime_type": "application/json",
-                "temperature": 0.0,
-                "max_output_tokens": 4096,
-            },
-            request_options={"timeout": 90},
-        )
-    except Exception as e:
-        print(f"[vision] ERROR calling Gemini: {type(e).__name__}: {e}", flush=True)
+    genai.configure(api_key=api_key)
+    response = None
+    last_err: Optional[Exception] = None
+    for attempt in range(1, 4):  # retry rate-limit / transient errors
+        try:
+            model = genai.GenerativeModel(model_to_use)
+            response = model.generate_content(
+                [
+                    {"mime_type": mime_type, "data": image_bytes},
+                    EXTRACTION_PROMPT,
+                ],
+                generation_config={
+                    "response_mime_type": "application/json",
+                    "temperature": 0.0,
+                    "max_output_tokens": 4096,
+                },
+                request_options={"timeout": 90},
+            )
+            break
+        except Exception as e:
+            last_err = e
+            name = type(e).__name__
+            transient = name in ("ResourceExhausted", "TooManyRequests", "ServiceUnavailable",
+                                 "DeadlineExceeded", "InternalServerError") \
+                or "429" in str(e)
+            print(f"[vision] attempt {attempt} failed: {name}: {e}", flush=True)
+            if transient and attempt < 3:
+                _t.sleep(5 * attempt)
+                continue
+            break
+    if response is None:
+        e = last_err
         report.extraction_status = "failed"
         report.missing_fields = [f"<gemini error: {type(e).__name__}: {e}>"]
         return report
