@@ -3,9 +3,9 @@ Vision extraction — send an AGL cert image to Google Gemini, get a
 structured AGLReport back.
 
 Requires `GEMINI_API_KEY` in the environment. Model is configurable via
-`GEMINI_MODEL` (default: gemini-2.0-flash) — Flash is cheap, fast, and good
+`GEMINI_MODEL` (default: gemini-3.8-flash) — Flash is cheap, fast, and good
 enough for structured lab-cert reads. For fallback or higher accuracy,
-switch to gemini-1.5-pro.
+switch to a Pro model. Google retires old models (2.0-flash was retired), so if you see a 404 "model no longer available" error, set GEMINI_MODEL to the replacement it names.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from typing import Any, Optional
 from .extract import AGLReport, Dimensions, REQUIRED_FIELDS
 
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 
 EXTRACTION_PROMPT = """You are reading an AGL (Asian Gemmological Institute & Laboratory) gemstone certificate image.
 
