@@ -1,37 +1,44 @@
 """Tests for the Gemini vision extractor. The Gemini SDK is stubbed."""
 import json
-import sys
-import types
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from gemstone_intake.vision import extract_from_image
 
 
-def _install_fake_genai(response_text: str):
-    """Install a fake google.generativeai module that returns response_text."""
-    fake = types.ModuleType("google")
-    fake_gen = types.ModuleType("google.generativeai")
+class _Err(Exception):
+    def __init__(self, msg, code):
+        super().__init__(msg)
+        self.code = code
 
-    def configure(api_key):
-        pass
 
-    class _FakeResp:
-        def __init__(self, text):
-            self.text = text
+class _FakeResp:
+    def __init__(self, text):
+        self.text = text
 
-    class _FakeModel:
-        def __init__(self, name):
-            self.name = name
-        def generate_content(self, parts, generation_config=None, request_options=None):
-            return _FakeResp(response_text)
 
-    fake_gen.configure = configure
-    fake_gen.GenerativeModel = _FakeModel
-    fake.generativeai = fake_gen
-    sys.modules["google"] = fake
-    sys.modules["google.generativeai"] = fake_gen
+class _FakeClient:
+    """Stands in for google.genai.Client; `script` is a list of text | Exception."""
+    def __init__(self, script):
+        self.script = list(script)
+        self.calls = []
+        outer = self
+
+        class _Models:
+            def generate_content(self, model, contents, config):
+                outer.calls.append(config)
+                item = outer.script.pop(0) if len(outer.script) > 1 else outer.script[0]
+                if isinstance(item, Exception):
+                    raise item
+                return _FakeResp(item)
+        self.models = _Models()
+
+
+def _install_fake_genai(response_text, script=None):
+    import gemstone_intake.vision as v
+    v._THINK_MODE_IDX = None
+    v._CLIENT = _FakeClient(script if script is not None else [response_text])
+    return v._CLIENT
 
 
 def test_extract_happy_path(monkeypatch):
@@ -104,3 +111,34 @@ def test_extract_partial_when_fields_missing(monkeypatch):
     report = extract_from_image(b"img")
     assert report.extraction_status == "partial"
     assert set(report.missing_fields) >= {"shape", "colour", "treatment", "origin"}
+
+
+_OK = json.dumps({"report_number": "X", "variety": "Ruby", "weight_ct": 1.0,
+                  "shape": "Round", "colour": "Red",
+                  "treatment": "Heated", "origin": "Burma"})
+
+
+def test_thinking_mode_falls_back_when_rejected(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    client = _install_fake_genai(None, script=[
+        _Err("400 thinking_budget not supported for this model", 400), _OK])
+    report = extract_from_image(b"img")
+    assert report.extraction_status == "ok"
+    assert len(client.calls) == 2  # first mode rejected, second accepted
+
+
+def test_retries_rate_limit(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    monkeypatch.setattr("gemstone_intake.vision._t.sleep", lambda s: None)
+    client = _install_fake_genai(None, script=[_Err("429 quota", 429), _OK])
+    report = extract_from_image(b"img")
+    assert report.extraction_status == "ok"
+    assert len(client.calls) == 2
+
+
+def test_non_retryable_error_reported(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    _install_fake_genai(None, script=[_Err("404 model gone", 404)])
+    report = extract_from_image(b"img")
+    assert report.extraction_status == "failed"
+    assert "404" in report.missing_fields[0]

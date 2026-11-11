@@ -274,7 +274,7 @@ def run_pipeline_live(
     # AGL lookups stay sequential (polite 2s spacing); Gemini reads run in
     # parallel in a thread pool so total time ~ AGL spacing, not AGL + Gemini
     # latency per row. Results are collected back in original row order.
-    workers = max(1, int(os.environ.get("VISION_CONCURRENCY", "5")))
+    workers = max(1, int(os.environ.get("VISION_CONCURRENCY", "8")))
     # slots[i] = ("done", intake, MappingResult) | ("future", intake, Future)
     slots: list[tuple] = []
 

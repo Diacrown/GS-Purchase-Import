@@ -3,9 +3,12 @@ Vision extraction — send an AGL cert image to Google Gemini, get a
 structured AGLReport back.
 
 Requires `GEMINI_API_KEY` in the environment. Model is configurable via
-`GEMINI_MODEL` (default: gemini-3.8-flash) — Flash is cheap, fast, and good
-enough for structured lab-cert reads. For fallback or higher accuracy,
-switch to a Pro model. Google retires old models (2.0-flash was retired), so if you see a 404 "model no longer available" error, set GEMINI_MODEL to the replacement it names.
+`GEMINI_MODEL` (default: gemini-3.8-flash). Google retires old models, so if
+you see a 404 "model no longer available" error, set GEMINI_MODEL to the
+replacement it names.
+
+Speed: "thinking" is switched off (it adds many seconds per call and is not
+needed to read printed text). Uses the current `google-genai` SDK.
 """
 from __future__ import annotations
 
@@ -60,6 +63,77 @@ def _coerce_string(v: Any) -> Optional[str]:
     return s or None
 
 
+# --- client + thinking-mode handling ---------------------------------------
+import threading
+import time as _t
+
+_LOCK = threading.Lock()
+_CLIENT = None
+_THINK_MODE_IDX: Optional[int] = None  # cached index of the mode that worked
+
+# Tried in order until one is accepted by the model. None = no thinking config.
+_THINK_MODES = [{"thinking_budget": 0}, {"thinking_level": "minimal"},
+                {"thinking_level": "low"}, None]
+
+
+def _get_client(api_key: str):
+    global _CLIENT
+    with _LOCK:
+        if _CLIENT is None:
+            from google import genai
+            from google.genai import types
+            _CLIENT = genai.Client(
+                api_key=api_key,
+                http_options=types.HttpOptions(timeout=60_000),  # ms
+            )
+        return _CLIENT
+
+
+def _is_transient(e: Exception) -> bool:
+    code = getattr(e, "code", None)
+    if code in (429, 500, 502, 503, 504):
+        return True
+    n = type(e).__name__
+    return n in ("ReadTimeout", "ConnectTimeout", "TimeoutException", "DeadlineExceeded",
+                 "ConnectError", "RemoteProtocolError") or "429" in str(e)
+
+
+def _is_thinking_rejection(e: Exception) -> bool:
+    m = str(e).lower()
+    return getattr(e, "code", None) == 400 and ("thinking" in m or "budget" in m)
+
+
+def _generate(client, model: str, image_bytes: bytes, mime_type: str):
+    """One Gemini call with thinking off; walks the thinking-mode ladder."""
+    global _THINK_MODE_IDX
+    from google.genai import types
+
+    start = _THINK_MODE_IDX if _THINK_MODE_IDX is not None else 0
+    last: Optional[Exception] = None
+    for idx in range(start, len(_THINK_MODES)):
+        mode = _THINK_MODES[idx]
+        cfg = dict(response_mime_type="application/json", temperature=0.0,
+                   max_output_tokens=2048)
+        if mode:
+            cfg["thinking_config"] = types.ThinkingConfig(**mode)
+        try:
+            resp = client.models.generate_content(
+                model=model,
+                contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                          EXTRACTION_PROMPT],
+                config=types.GenerateContentConfig(**cfg),
+            )
+            _THINK_MODE_IDX = idx
+            return resp
+        except Exception as e:
+            last = e
+            if _is_thinking_rejection(e) and idx < len(_THINK_MODES) - 1:
+                print(f"[vision] thinking mode {mode} rejected, trying next", flush=True)
+                continue
+            raise
+    raise last  # pragma: no cover
+
+
 def extract_from_image(
     image_bytes: bytes,
     mime_type: str = "image/jpeg",
@@ -75,10 +149,10 @@ def extract_from_image(
     report = AGLReport()
 
     try:
-        import google.generativeai as genai
+        import google.genai  # noqa: F401
     except ImportError:
         report.extraction_status = "failed"
-        report.missing_fields = ["<google-generativeai not installed>"]
+        report.missing_fields = ["<google-genai not installed>"]
         return report
 
     api_key = os.environ.get("GEMINI_API_KEY")
@@ -87,39 +161,21 @@ def extract_from_image(
         report.missing_fields = ["<GEMINI_API_KEY not set>"]
         return report
 
-    model_to_use = model_name or GEMINI_MODEL
+    model_to_use = model_name or os.environ.get("GEMINI_MODEL", GEMINI_MODEL)
     print(f"[vision] calling {model_to_use} on {len(image_bytes)}-byte {mime_type}", flush=True)
-    import time as _t
     _t0 = _t.time()
 
-    genai.configure(api_key=api_key)
     response = None
     last_err: Optional[Exception] = None
     for attempt in range(1, 4):  # retry rate-limit / transient errors
         try:
-            model = genai.GenerativeModel(model_to_use)
-            response = model.generate_content(
-                [
-                    {"mime_type": mime_type, "data": image_bytes},
-                    EXTRACTION_PROMPT,
-                ],
-                generation_config={
-                    "response_mime_type": "application/json",
-                    "temperature": 0.0,
-                    "max_output_tokens": 4096,
-                },
-                request_options={"timeout": 90},
-            )
+            response = _generate(_get_client(api_key), model_to_use, image_bytes, mime_type)
             break
         except Exception as e:
             last_err = e
-            name = type(e).__name__
-            transient = name in ("ResourceExhausted", "TooManyRequests", "ServiceUnavailable",
-                                 "DeadlineExceeded", "InternalServerError") \
-                or "429" in str(e)
-            print(f"[vision] attempt {attempt} failed: {name}: {e}", flush=True)
-            if transient and attempt < 3:
-                _t.sleep(5 * attempt)
+            print(f"[vision] attempt {attempt} failed: {type(e).__name__}: {e}", flush=True)
+            if _is_transient(e) and attempt < 3:
+                _t.sleep(4 * attempt)
                 continue
             break
     if response is None:
