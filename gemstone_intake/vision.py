@@ -89,6 +89,8 @@ def extract_from_image(
 
     model_to_use = model_name or GEMINI_MODEL
     print(f"[vision] calling {model_to_use} on {len(image_bytes)}-byte {mime_type}", flush=True)
+    import time as _t
+    _t0 = _t.time()
 
     try:
         genai.configure(api_key=api_key)
@@ -101,14 +103,17 @@ def extract_from_image(
             generation_config={
                 "response_mime_type": "application/json",
                 "temperature": 0.0,
-                "max_output_tokens": 1024,
+                "max_output_tokens": 4096,
             },
+            request_options={"timeout": 90},
         )
     except Exception as e:
         print(f"[vision] ERROR calling Gemini: {type(e).__name__}: {e}", flush=True)
         report.extraction_status = "failed"
         report.missing_fields = [f"<gemini error: {type(e).__name__}: {e}>"]
         return report
+
+    print(f"[vision] gemini returned in {_t.time() - _t0:.1f}s", flush=True)
 
     # Extract the text payload defensively — response.text can raise on blocked content
     text = None
