@@ -24,7 +24,7 @@ def _install_fake_genai(response_text: str):
     class _FakeModel:
         def __init__(self, name):
             self.name = name
-        def generate_content(self, parts, generation_config=None):
+        def generate_content(self, parts, generation_config=None, request_options=None):
             return _FakeResp(response_text)
 
     fake_gen.configure = configure
