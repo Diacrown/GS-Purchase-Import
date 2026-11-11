@@ -142,3 +142,13 @@ def test_non_retryable_error_reported(monkeypatch):
     report = extract_from_image(b"img")
     assert report.extraction_status == "failed"
     assert "404" in report.missing_fields[0]
+
+
+def test_daily_quota_not_retried_and_message_is_clear(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    client = _install_fake_genai(None, script=[_Err(
+        "429 RESOURCE_EXHAUSTED GenerateRequestsPerDayPerProjectPerModel-FreeTier", 429)])
+    report = extract_from_image(b"img")
+    assert len(client.calls) == 1  # no retries
+    assert report.extraction_status == "failed"
+    assert "daily quota" in report.missing_fields[0]

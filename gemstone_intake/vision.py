@@ -89,7 +89,14 @@ def _get_client(api_key: str):
         return _CLIENT
 
 
+def _is_daily_quota(e: Exception) -> bool:
+    m = str(e)
+    return "PerDay" in m or "per day" in m.lower()
+
+
 def _is_transient(e: Exception) -> bool:
+    if _is_daily_quota(e):
+        return False  # retrying a daily-quota 429 cannot help and burns calls
     code = getattr(e, "code", None)
     if code in (429, 500, 502, 503, 504):
         return True
@@ -181,7 +188,12 @@ def extract_from_image(
     if response is None:
         e = last_err
         report.extraction_status = "failed"
-        report.missing_fields = [f"<gemini error: {type(e).__name__}: {e}>"]
+        if _is_daily_quota(e):
+            report.missing_fields = [
+                "<Gemini daily quota exhausted (free tier allows only ~20 requests/day). "
+                "Enable billing on the Google AI Studio project or wait for the quota to reset>"]
+        else:
+            report.missing_fields = [f"<gemini error: {type(e).__name__}: {str(e)[:300]}>"]
         return report
 
     print(f"[vision] gemini returned in {_t.time() - _t0:.1f}s", flush=True)
