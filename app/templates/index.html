@@ -919,7 +919,7 @@ async function pollJob(jobId) {
       const pct = Math.round(100 * data.progress.current / data.progress.total);
       progressFill.style.width = pct + '%';
       processingMsg.textContent =
-        `Processing row ${data.progress.current} of ${data.progress.total} — ${data.progress.report_no || ''}`;
+        `${data.progress.report_no || 'Working…'}`;
     }
 
     if (data.status === 'done') return data;

@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -288,7 +288,7 @@ def run_pipeline_live(
             )
 
             if progress:
-                progress(i, total, report_no or "<blank>")
+                progress(i, 2 * total, f"Fetching certificate {i}/{total} from AGL — {report_no or '<blank>'}")
 
             if not report_no or not password:
                 slots.append(("done", intake, MappingResult(
@@ -319,13 +319,20 @@ def run_pipeline_live(
             if i < total and delay_seconds > 0:
                 time.sleep(delay_seconds)
 
-        # --- 3. Collect in order, map + flag -------------------------------
-        for idx, (kind, intake, payload) in enumerate(slots, start=1):
+        # --- 3. Wait for Gemini reads (progress counts completions) --------
+        pending = [p for k, _, p in slots if k == "future"]
+        done_n = 0
+        for _ in as_completed(pending):
+            done_n += 1
+            if progress:
+                progress(total + done_n, 2 * total,
+                         f"Reading certificates with Gemini: {done_n}/{len(pending)} done")
+
+        # --- 4. Collect in original order, map + flag ----------------------
+        for kind, intake, payload in slots:
             if kind == "done":
                 pairs.append((intake, payload))
                 continue
-            if progress:
-                progress(idx, total, f"reading certificate {idx}/{total}")
             try:
                 report = payload.result()
                 print(f"[pipeline] vision status={report.extraction_status} missing={report.missing_fields}", flush=True)
