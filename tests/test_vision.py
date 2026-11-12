@@ -174,3 +174,12 @@ def test_failures_are_not_cached(monkeypatch):
     assert extract_from_image(b"img-x").extraction_status == "failed"
     assert extract_from_image(b"img-x").extraction_status == "ok"
     assert len(client.calls) == 2
+
+
+def test_no_credits_clear_message_and_no_retry(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    client = _install_fake_genai(None, script=[_Err(
+        "402 RESOURCE_EXHAUSTED Your prepayment credits are depleted", 402)])
+    report = extract_from_image(b"img-credits")
+    assert len(client.calls) == 1
+    assert "credits are $0" in report.missing_fields[0]

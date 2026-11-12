@@ -94,8 +94,13 @@ def _is_daily_quota(e: Exception) -> bool:
     return "PerDay" in m or "per day" in m.lower()
 
 
+def _is_no_credits(e: Exception) -> bool:
+    m = str(e).lower()
+    return getattr(e, "code", None) == 402 or "prepayment credits" in m
+
+
 def _is_transient(e: Exception) -> bool:
-    if _is_daily_quota(e):
+    if _is_daily_quota(e) or _is_no_credits(e):
         return False  # retrying a daily-quota 429 cannot help and burns calls
     code = getattr(e, "code", None)
     if code in (429, 500, 502, 503, 504):
@@ -234,7 +239,11 @@ def extract_from_image(
     if response is None:
         e = last_err
         report.extraction_status = "failed"
-        if _is_daily_quota(e):
+        if _is_no_credits(e):
+            report.missing_fields = [
+                "<Gemini prepay credits are $0. Open Google AI Studio > Billing > Buy credits, "
+                "then re-run (no redeploy needed)>"]
+        elif _is_daily_quota(e):
             report.missing_fields = [
                 "<Gemini daily quota exhausted (free tier allows only ~20 requests/day). "
                 "Enable billing on the Google AI Studio project or wait for the quota to reset>"]
