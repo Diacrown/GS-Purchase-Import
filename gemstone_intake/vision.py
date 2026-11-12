@@ -141,6 +141,47 @@ def _generate(client, model: str, image_bytes: bytes, mime_type: str):
     raise last  # pragma: no cover
 
 
+# --- result cache -----------------------------------------------------------
+# A certificate that was already read successfully is never sent to Gemini
+# again (same image bytes + model => same answer). Saves quota and time on
+# re-runs. Only successful parses are cached. Cache lives on local disk
+# (/tmp by default) so it is cleared whenever the machine is rebuilt.
+import hashlib
+import tempfile
+from pathlib import Path
+
+
+def _cache_dir() -> Path:
+    d = os.environ.get("VISION_CACHE_DIR") or str(Path(tempfile.gettempdir()) / "gemini_cache")
+    p = Path(d)
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    return p
+
+
+def _cache_key(image_bytes: bytes, model: str) -> str:
+    return hashlib.sha256(image_bytes + b"|" + model.encode()).hexdigest()
+
+
+def _get_cache(key: str) -> Optional[dict]:
+    try:
+        f = _cache_dir() / f"{key}.json"
+        if f.exists():
+            return json.loads(f.read_text())
+    except Exception:
+        pass
+    return None
+
+
+def _put_cache(key: str, data: dict) -> None:
+    try:
+        (_cache_dir() / f"{key}.json").write_text(json.dumps(data))
+    except Exception:
+        pass
+
+
 def extract_from_image(
     image_bytes: bytes,
     mime_type: str = "image/jpeg",
@@ -169,6 +210,11 @@ def extract_from_image(
         return report
 
     model_to_use = model_name or os.environ.get("GEMINI_MODEL", GEMINI_MODEL)
+    cache_key = _cache_key(image_bytes, model_to_use)
+    cached = _get_cache(cache_key)
+    if cached is not None:
+        print("[vision] cache hit - skipping Gemini call", flush=True)
+        return _populate(report, cached)
     print(f"[vision] calling {model_to_use} on {len(image_bytes)}-byte {mime_type}", flush=True)
     _t0 = _t.time()
 
@@ -237,6 +283,12 @@ def extract_from_image(
             report.raw_html_excerpt = text[:2000]
             return report
 
+    _put_cache(cache_key, data)
+    return _populate(report, data)
+
+
+def _populate(report: AGLReport, data: dict) -> AGLReport:
+    """Fill an AGLReport from the parsed Gemini JSON and set its status."""
     # Populate report fields.
     report.report_number = _coerce_string(data.get("report_number"))
     report.date_of_issue = _coerce_string(data.get("date_of_issue"))

@@ -41,6 +41,11 @@ def _install_fake_genai(response_text, script=None):
     return v._CLIENT
 
 
+@pytest.fixture(autouse=True)
+def _isolated_cache(tmp_path, monkeypatch):
+    monkeypatch.setenv("VISION_CACHE_DIR", str(tmp_path / "cache"))
+
+
 def test_extract_happy_path(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "fake")
     payload = {
@@ -152,3 +157,20 @@ def test_daily_quota_not_retried_and_message_is_clear(monkeypatch):
     assert len(client.calls) == 1  # no retries
     assert report.extraction_status == "failed"
     assert "daily quota" in report.missing_fields[0]
+
+
+def test_cache_avoids_second_gemini_call(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    client = _install_fake_genai(_OK)
+    r1 = extract_from_image(b"same-image")
+    r2 = extract_from_image(b"same-image")
+    assert r1.extraction_status == r2.extraction_status == "ok"
+    assert len(client.calls) == 1  # second read served from cache
+
+
+def test_failures_are_not_cached(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    client = _install_fake_genai(None, script=[_Err("404 gone", 404), _OK])
+    assert extract_from_image(b"img-x").extraction_status == "failed"
+    assert extract_from_image(b"img-x").extraction_status == "ok"
+    assert len(client.calls) == 2
